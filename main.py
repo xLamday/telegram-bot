@@ -18,7 +18,7 @@ from loggerinfo import logger
 
 # Import aggiornati delle classi/istanze che abbiamo creato
 from config import TOKEN
-from funzioni.init_db import init_db
+from database.connection import setup_database
 
 # Moduli rifattorizzati
 from comandi.cmd import ComandiBot
@@ -46,7 +46,7 @@ def main():
     """Inizializza e avvia il bot con i nuovi handler basati su classi."""
     # Init DB (setup tabelle / migrazioni)
     try:
-        init_db()
+        setup_database()
         logger.info("Database inizializzato correttamente.")
     except Exception as e:
         logger.critical(f"Errore durante init_db(): {e}")
