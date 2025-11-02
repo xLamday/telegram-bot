@@ -3,7 +3,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
 from loggerinfo import logger
-from funzioni.system import add_channel, remove_channel
+from funzioni.system import ChannelManager
 from config.settings import Settings
 
 class ComandiBot:
@@ -11,6 +11,7 @@ class ComandiBot:
 
     def __init__(self):
         self.publishing_state = {}
+        self.system = ChannelManager()
 
     # ------------------ START ------------------
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -35,7 +36,7 @@ class ComandiBot:
 
         raw = context.args[0].strip()
 
-        success = remove_channel(raw)
+        success = self.system.remove_channel(raw)
         if success:
             # Prova a notificare il canale rimosso
             try:

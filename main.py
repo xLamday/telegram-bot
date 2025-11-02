@@ -17,7 +17,7 @@ from telegram.error import TelegramError
 from loggerinfo import logger
 
 # Import aggiornati delle classi/istanze che abbiamo creato
-from config import TOKEN
+from config.settings import Settings
 from database.connection import setup_database
 
 # Moduli rifattorizzati
@@ -59,24 +59,17 @@ def main():
     bot_monitor = BotMonitor()
 
     # Crea l'applicazione
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).build()
     job_queue = app.job_queue
 
     # === HANDLER COMANDI ===
     # /start
     app.add_handler(CommandHandler("start", bot_commands.start))
-    # /rimuovi <id|title>
+    # /rimuovi <id>
     app.add_handler(CommandHandler("rimuovi", bot_commands.rimuovi))
     # /pubblica
     app.add_handler(CommandHandler("pubblica", bot_commands.cmd_pubblica))
-    # /registra (genera codice per canale privato)
-    app.add_handler(CommandHandler("registra", bot_commands.registra))
-    # (opzionale) registra_pubblico se vuoi riattivarlo
-    try:
-        app.add_handler(CommandHandler("registra_pubblico", bot_commands.registra_pubblico))
-    except AttributeError:
-        # Se non è presente, ignoriamo
-        logger.debug("Comando registra_pubblico non definito in BotCommands (skip).")
+
 
     # === EVENTI CHAT MEMBER ===
     # Quando il bot viene rimosso / perde permessi
