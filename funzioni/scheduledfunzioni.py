@@ -23,7 +23,7 @@ class BotMonitor:
                 return
 
         with DatabaseManager() as db:
-            posts = await db.fetch_all_posts()
+            posts = db.fetch_all_posts()
             for chat_id, msg_id, title in posts:
                 try:
                     await asyncio.sleep(2)
@@ -73,7 +73,7 @@ class BotMonitor:
         """Controlla periodicamente se il bot ha ancora permessi admin nei canali."""
 
         with DatabaseManager() as db:
-            channels = await db.fetch_all_channels()
+            channels = db.fetch_all_channels()
 
         for chat_id, title in channels:
             try:

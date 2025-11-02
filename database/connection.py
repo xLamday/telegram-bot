@@ -37,7 +37,6 @@ def setup_database():
 
     for table_query in tables:
         cursor.execute(table_query)
-    logging.info(f"Aggiunta {table_query} colonna alla tabella channels")
 
     # # Gestione migrazioni future (esempio: aggiunta colonne)
     # try:
