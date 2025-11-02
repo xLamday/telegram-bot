@@ -1,3 +1,4 @@
 # Environents
 .env
 __pycache__/
+/funzioni/__pycache__
