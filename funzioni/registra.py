@@ -5,13 +5,14 @@ from telegram.ext import ContextTypes
 from loggerinfo import logger
 from database.database import DatabaseManager
 from config.settings import Settings
-from funzioni.system import remove_channel
+from funzioni.system import ChannelManager
 
 class RegistrazioneCanale:
     """Classe per gestire la registrazione e rimozione dei canali privati."""
 
     def __init__(self):
         self.lock = asyncio.Lock()
+        self.system = ChannelManager()
 
     async def handle_chat_member_update(self, update: ChatMemberUpdated, context: ContextTypes.DEFAULT_TYPE):
         """Gestisce l'evento di aggiornamento dei permessi del bot in un canale."""
@@ -67,7 +68,7 @@ class RegistrazioneCanale:
     async def _remove_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE):
         """Rimuove un canale dal DB e notifica l'admin."""
         async with self.lock:
-            remove_channel(chat_id)  # Funzione locale che gestisce la rimozione dal DB
+            self.system.remove_channel(chat_id)  # Funzione locale che gestisce la rimozione dal DB
 
             with DatabaseManager() as db:
                 await db.delete_channel(chat_id)
