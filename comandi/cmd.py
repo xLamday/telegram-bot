@@ -3,7 +3,6 @@ import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
 from loggerinfo import logger
-from helpers.helper import generate_code, save_code
 from funzioni.system import add_channel, remove_channel
 from config.settings import Settings
 
@@ -65,60 +64,3 @@ class ComandiBot:
             logger.info(f"Stato pubblicazione reset per utente {user_id}. Stato invio: {Settings.invio}")
 
         asyncio.create_task(reset_state())
-
-    # ------------------ REGISTRA CANALI PUBBLICI ------------------
-    async def registra_pubblico(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Registra un canale pubblico dato link, username o ID."""
-        if not context.args:
-            await update.message.reply_text("Devi fornire il link o @username del canale pubblico.")
-            return
-
-        raw_input = context.args[0].strip()
-        # Determina username o link
-        if raw_input.startswith(("https://t.me/", "http://t.me/")):
-            username = raw_input.split("/")[-1]
-            if not username.startswith("@"):
-                username = "@" + username
-            identifier = username
-            link = raw_input
-        else:
-            identifier = raw_input
-            link = raw_input
-            username = None
-
-        try:
-            chat = await context.bot.get_chat(identifier)
-            username = username or chat.username
-            chat_id = str(chat.id)
-
-            if add_channel(link, username, chat_id):
-                try:
-                    await context.bot.send_message(chat_id=chat.id, text="✅ Questo canale è stato registrato correttamente!")
-                except Exception:
-                    logger.warning(f"Impossibile notificare il canale {chat_id} della registrazione")
-
-                await update.message.reply_text(
-                    f"Canale registrato!\nLink: {link}\nUsername: {username}\nID: {chat_id}"
-                )
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=f"📢 Nuovo canale registrato!\nLink: {link}\nUsername: {username}\nID: {chat_id}"
-                )
-                logger.info(f"Registrato canale pubblico {username} ({chat_id})")
-            else:
-                await update.message.reply_text("⚠️ Questo canale è già registrato.")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Errore durante la registrazione: {e}")
-            logger.error(f"Errore registra_pubblico: {e}")
-
-    # ------------------ REGISTRA PRIVATO ------------------
-    async def registra(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Genera un codice per registrare un canale privato."""
-        user_id = update.effective_user.id
-        code = generate_code()
-        save_code(code, user_id)
-        await update.message.reply_text(
-            f"✅ Codice generato!\nIncolla questo codice nel canale privato dove mi hai aggiunto admin:\n\n`{code}`",
-            parse_mode="Markdown"
-        )
-        logger.info(f"Generato codice {code} per utente {user_id}")

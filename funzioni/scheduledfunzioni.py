@@ -3,7 +3,7 @@ import asyncio
 from telegram.error import TelegramError, BadRequest, Forbidden, RetryAfter
 from telegram.ext import ContextTypes
 from loggerinfo import logger
-from funzioni.system import remove_channel
+from funzioni.system import ChannelManager
 from config.settings import Settings
 from database.database import DatabaseManager
 
@@ -12,6 +12,7 @@ class BotMonitor:
 
     def __init__(self):
         self.state_lock = asyncio.Lock()
+        self.system = ChannelManager()
 
     async def check_post_eliminati(self, context: ContextTypes.DEFAULT_TYPE):
         """Controlla se i post sono stati eliminati e segnala all'admin."""
@@ -47,7 +48,7 @@ class BotMonitor:
                 except TelegramError as e:
                     logger.warning(f"Errore Telegram controllando il messaggio {msg_id} in {chat_id}: {e}")
 
-    async def _forward_message_safe(self, context, chat_id, msg_id, tentativi: int = 3):
+    async def _forward_message_safe(self, context: ContextTypes.DEFAULT_TYPE, chat_id, msg_id, tentativi: int = 3):
         """Forward/copy message con retry in caso di RetryAfter o errori transitori."""
         for prova in range(1, tentativi + 1):
             try:
@@ -81,7 +82,7 @@ class BotMonitor:
                 bot_admin = any(a.user.id == context.bot.id for a in admins)
 
                 if not bot_admin:
-                    #remove_channel(chat_id)
+                    self.system.remove_channel(chat_id)
                     await context.bot.send_message(
                         chat_id=Settings.ADMIN_ID,
                         text=f"⚠️ Ho perso i permessi admin nel canale {chat_id}!"

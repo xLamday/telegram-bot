@@ -7,7 +7,6 @@ from telegram.error import RetryAfter
 from loggerinfo import logger
 from config.settings import Settings
 from database.database import DatabaseManager
-from helpers.helper import check_code, remove_code
 
 DELAY = 2  # default delay tra invii
 
@@ -34,14 +33,6 @@ class ChannelManager:
                     return False
                 db.delete_channel(identifier)
                 return True
-            else:
-                # titolo
-                channels = db.fetch_all_channels()
-                for chat_id, title in channels:
-                    if title == identifier:
-                        db.delete_channel(chat_id)
-                        return True
-                return False
 
     # ------------------ HANDLE FORWARD MESSAGE ------------------
     async def handle_forward_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
