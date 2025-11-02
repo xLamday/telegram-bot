@@ -1,174 +1,154 @@
-import sqlite3
-from telegram import *
-from telegram.ext import *
-import config
-import random
-from config import *
-from telegram import Update
-from telegram.ext import MessageHandler, filters
-from telegram.error import RetryAfter
-from helpers.helper import check_code, remove_code
-import time
+# channel_manager.py
 import asyncio
+import random
+from telegram import Update
+from telegram.ext import ContextTypes
+from telegram.error import RetryAfter
+from loggerinfo import logger
+from config.settings import Settings
+from database.database import DatabaseManager
+from helpers.helper import check_code, remove_code
 
-def add_channel(title: str, chat_id: str):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    try:
-        c.execute(
-            "INSERT INTO channels (title, chat_id) VALUES (?, ?)",
-            (title, chat_id),
-        )
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
+DELAY = 2  # default delay tra invii
 
-def remove_channel(identifier: str):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+class ChannelManager:
+    """Gestione canali, invio messaggi e rimozioni."""
 
-    # prima otteniamo il chat_id del canale da rimuovere
-    if identifier.lstrip("-").isdigit():
-        # è un chat_id
-        c.execute("SELECT chat_id FROM channels WHERE chat_id=?", (identifier,))
-    else:
-        # è un titolo
-        c.execute("SELECT chat_id FROM channels WHERE title=?", (identifier,))
-    row = c.fetchone()
+    def __init__(self):
+        self.publishing_state = {}
+        self.processo_lock = asyncio.Lock()
 
-    if not row:
-        conn.close()
-        return False  # nessun canale trovato
+    # ------------------ ADD / REMOVE CHANNEL ------------------
+    def add_channel(self, title: str, chat_id: str) -> bool:
+        with DatabaseManager() as db:
+            if db.channel_exists(chat_id):
+                return False
+            db.add_channel(chat_id, title)
+            return True
 
-    chat_id = row[0]
+    def remove_channel(self, identifier: str) -> bool:
+        with DatabaseManager() as db:
+            if identifier.lstrip("-").isdigit():
+                # chat_id
+                if not db.channel_exists(identifier):
+                    return False
+                db.delete_channel(identifier)
+                return True
+            else:
+                # titolo
+                channels = db.fetch_all_channels()
+                for chat_id, title in channels:
+                    if title == identifier:
+                        db.delete_channel(chat_id)
+                        return True
+                return False
 
-    # eliminiamo il canale
-    if identifier.lstrip("-").isdigit():
-        c.execute("DELETE FROM channels WHERE chat_id=?", (identifier,))
-    else:
-        c.execute("DELETE FROM channels WHERE title=?", (identifier,))
+    # ------------------ HANDLE FORWARD MESSAGE ------------------
+    async def handle_forward_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Inoltra il messaggio dell'utente a tutti i canali registrati."""
+        user_id = update.effective_user.id
+        if not self.publishing_state.get(user_id):
+            return
 
-    # eliminiamo anche i post associati a quel canale
-    c.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
+        self.publishing_state[user_id] = False  # reset stato
+        if not update.message:
+            await update.effective_user.send_message("❌ Non ho ricevuto un messaggio valido.")
+            return
 
-    conn.commit()
-    conn.close()
-    return True
+        chat_id_orig = update.message.chat.id
+        msg_id_orig = update.message.message_id
 
-async def handle_forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not publishing_state.get(user_id):
-        return
+        async with self.processo_lock:
+            Settings.invio = True
+            Settings.processo_invio = True
+            logger.info(f"Inizio invio messaggi dall'utente {user_id}")
 
-    publishing_state[user_id] = False  # reset stato
+            with DatabaseManager() as db:
+                canali = db.fetch_all_channels()
 
-    # Usa sempre update.message per messaggi privati
-    if not update.message:
-        await update.effective_user.send_message("❌ Non ho ricevuto un messaggio valido.")
-        return
-    
-    config.invio = False
-    print(f"Stato invio: {config.invio}")
-    chat_id_orig = update.message.chat.id
-    msg_id_orig = update.message.message_id
+                for chat_id, _ in canali:
+                    try:
+                        await asyncio.sleep(DELAY + random.uniform(-0.5, 0.5))
 
-    # Cicla i canali registrati
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT chat_id FROM channels")
-    channels = c.fetchall()
-    for (chat_id,) in channels:
-        try:
-            config.processo_invio = True
-            await asyncio.sleep(DELAY + random.uniform(-0.5, 0.5))
-            print(f"E' passato {DELAY} s dal vecchio messaggio! Invio il prossimo!")
-            # Elimina vecchio post se esiste
-            c.execute("SELECT forwarded_message_id FROM posts WHERE channel_chat_id=?", (chat_id,))
-            old_post = c.fetchone()
-            if old_post:
-                try:
-                    await context.bot.delete_message(chat_id=int(chat_id), message_id=old_post[0])
-                except Exception:
-                    pass
+                        # elimina vecchio post se presente
+                        old_posts = db.fetch_all_posts()
+                        for o_chat_id, fwd_id, _ in old_posts:
+                            if o_chat_id == chat_id:
+                                try:
+                                    await context.bot.delete_message(chat_id=int(chat_id), message_id=fwd_id)
+                                except Exception:
+                                    pass
 
-            # Copia il messaggio
-            fwd_msg = await context.bot.copy_message(
-                chat_id=int(chat_id),
-                from_chat_id=chat_id_orig,
-                message_id=msg_id_orig
-            )
+                        # copia il messaggio
+                        fwd_msg = await context.bot.copy_message(
+                            chat_id=int(chat_id),
+                            from_chat_id=chat_id_orig,
+                            message_id=msg_id_orig
+                        )
 
-            # Salva nel DB
-            c.execute(
-                "REPLACE INTO posts (original_message_id, channel_chat_id, forwarded_message_id) VALUES (?, ?, ?)",
-                (msg_id_orig, chat_id, fwd_msg.message_id)
-            )
-        except RetryAfter as errore:
-            print(f"Ricevuto Retry: attendere {errore.retry_after} secondi")
-            await asyncio.sleep(errore.retry_after + 1)
+                        db.upsert_post(msg_id_orig, chat_id, fwd_msg.message_id)
+                    except RetryAfter as e:
+                        logger.warning(f"Rate limit: attendere {e.retry_after} secondi")
+                        await asyncio.sleep(e.retry_after + 1)
+                    except Exception as e:
+                        logger.error(f"Errore inoltrando messaggio al canale {chat_id}: {e}")
 
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Messaggio pubblicato nei canali privati.")
-    config.processo_invio = False
+            Settings.invio = False
+            Settings.processo_invio = False
+            await update.message.reply_text("Messaggio pubblicato nei canali privati.")
+            logger.info("Invio completato a tutti i canali registrati.")
 
-async def bot_rimosso(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_member_update = update.my_chat_member  # usiamo my_chat_member per canali privati
-    bot_id = context.bot.id
+    # ------------------ BOT RIMOSSO ------------------
+    async def bot_rimosso(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Gestisce la rimozione del bot dai canali privati."""
+        chat_member_update = update.my_chat_member
+        if not chat_member_update:
+            return
 
-    if not chat_member_update:
-        return
+        bot_id = context.bot.id
+        old_status = chat_member_update.old_chat_member.status
+        new_status = chat_member_update.new_chat_member.status
+        user_id = chat_member_update.new_chat_member.user.id
 
-    old_status = chat_member_update.old_chat_member.status
-    new_status = chat_member_update.new_chat_member.status
+        if user_id != bot_id:
+            return
 
-    if chat_member_update.new_chat_member.user.id == bot_id:
-        # se il bot ha perso accesso o è stato rimosso
         if old_status in ("administrator", "member") and new_status not in ("administrator", "member"):
             chat_id = chat_member_update.chat.id
             chat_title = chat_member_update.chat.title or "<no title>"
 
-            # Rimuove i post associati a questo canale privato dal DB
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
-            conn.commit()
-            conn.close()
+            # rimuove post associati
+            with DatabaseManager() as db:
+                db.delete_channel(chat_id)
 
-            # Notifica l'admin
+            # notifica admin
             await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"⚠️ Sono stato rimosso dal canale privato {chat_title} ({chat_id}) e tutti i post associati sono stati rimossi dal database."
+                chat_id=Settings.ADMIN_ID,
+                text=f"⚠️ Sono stato rimosso dal canale privato {chat_title} ({chat_id}) "
+                     "e tutti i post associati sono stati rimossi dal database."
             )
+            logger.info(f"Bot rimosso dal canale {chat_title} ({chat_id}) e dati eliminati.")
 
-# async def scan_channel(update, context):
-#     if not update.channel_post:  # assicurati che sia un post del canale
-#         return
+    # ------------------ SCAN CHANNEL (CODICE PRIVATO) ------------------
+    # async def scan_channel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #     """Verifica un codice nel post del canale privato e registra il canale."""
+    #     if not update.channel_post:
+    #         return
 
-#     text = update.channel_post.text.strip()
-#     # qui metti la logica del codice di verifica
-#     admin_id = check_code(text)
-#     if admin_id:
-#         chat = update.channel_post.chat
-#         remove_code(text)
+    #     text = (update.channel_post.text or "").strip()
+    #     admin_id = check_code(text)
+    #     if not admin_id:
+    #         return
 
-#         # salva il canale nel DB
-#         conn = sqlite3.connect(DB_FILE)
-#         c = conn.cursor()
-#         c.execute(
-#             "INSERT OR REPLACE INTO channels (title, chat_id) VALUES (?, ?)",
-#             (chat.title, str(chat.id))
-#         )
-#         conn.commit()
-#         conn.close()
+    #     chat = update.channel_post.chat
+    #     remove_code(text)
 
-#         await context.bot.send_message(
-#             chat_id=admin_id,
-#             text=f"🎉 Canale registrato con successo!\nTitolo: {chat.title}\nID: {chat.id}"
-#         )
-#         await update.channel_post.reply_text("✅ Codice verificato, canale registrato!")
-#     else:
-#         pass
+    #     with DatabaseManager() as db:
+    #         db.add_channel(chat.id, chat.title)
+
+    #     await context.bot.send_message(
+    #         chat_id=admin_id,
+    #         text=f"🎉 Canale registrato con successo!\nTitolo: {chat.title}\nID: {chat.id}"
+    #     )
+    #     await update.channel_post.reply_text("✅ Codice verificato, canale registrato!")
+    #     logger.info(f"Canale privato registrato: {chat.title} ({chat.id})")

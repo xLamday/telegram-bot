@@ -1,73 +1,80 @@
-from telegram import ChatMemberUpdated, ChatMember
+# channel_registrar.py
+import asyncio
+from telegram import ChatMemberUpdated
 from telegram.ext import ContextTypes
-from config import *
-from funzioni.system import *
 from loggerinfo import logger
+from database.database import DatabaseManager
+from config.settings import Settings
+from funzioni.system import remove_channel
 
+class RegistrazioneCanale:
+    """Classe per gestire la registrazione e rimozione dei canali privati."""
 
-# -- REGISTRA CANALI PRIVATI --
-async def registra_channel_post(update: ChatMemberUpdated, context: ContextTypes.DEFAULT_TYPE):
-    
-    cm = update.my_chat_member
-    if not cm:
-        return
+    def __init__(self):
+        self.lock = asyncio.Lock()
 
-    bot_id = context.bot.id
-    chat = cm.chat
-    chat_id = str(chat.id)
-    chat_titolo = chat.title or "<senza nome>"
-
-    old_status = cm.old_chat_member.status
-    new_status = cm.new_chat_member.status
-    user_id = cm.new_chat_member.user.id
-
-    if user_id != bot_id:
-        return
-
-    if new_status in ("administrator", "creator") and old_status not in ("administrator", "creator"):
-        connessione = sqlite3.connect(DB_FILE)
-        cursore =  connessione.cursor()
-        cursore.execute("SELECT * FROM channels where chat_id=?", (chat_id,))
-        esiste = cursore.fetchone()
-        if esiste:
-            connessione.close()
+    async def handle_chat_member_update(self, update: ChatMemberUpdated, context: ContextTypes.DEFAULT_TYPE):
+        """Gestisce l'evento di aggiornamento dei permessi del bot in un canale."""
+        cm = update.my_chat_member
+        if not cm:
             return
 
-        messaggio = await context.bot.send_message(chat_id=chat.id, text="Sono admin, aggiungo il canale...")
+        bot_id = context.bot.id
+        chat = cm.chat
+        chat_id = str(chat.id)
+        chat_title = chat.title or "<senza nome>"
 
-        cursore.execute("INSERT INTO channels (chat_id, title) VALUES (?, ?)", (chat_id, chat.title))
-        connessione.commit()
-        connessione.close()
+        old_status = cm.old_chat_member.status
+        new_status = cm.new_chat_member.status
+        user_id = cm.new_chat_member.user.id
 
-        await context.bot.send_message(ADMIN_ID, f"Canale con ID: {chat_id} e nome: {chat.title} è stato registrato!")
+        if user_id != bot_id:
+            return
 
-    if old_status in ("administrator", "member") and new_status not in ("administrator", "member"):
-        remove_channel(chat_id)
-        await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Sono stato rimosso o ho perso i permessi dal canale {chat_titolo} ({chat_id}).\n"f"Il canale e i post associati sono stati rimossi dal database.")
-        return
+        # Se il bot diventa admin/creator
+        if new_status in ("administrator", "creator") and old_status not in ("administrator", "creator"):
+            await self._register_channel(chat_id, chat_title, context)
 
-    
-    
-    
-    # Verifica che sia effettivamente un channel_post
-    # if not update.channel_post:
-    #     return
+        # Se il bot perde i permessi o viene rimosso
+        if old_status in ("administrator", "member") and new_status not in ("administrator", "member"):
+            await self._remove_channel(chat_id, chat_title, context)
 
-    # chat = update.channel_post.chat
-    # chat_id = str(chat.id)
-    # username = chat.username
-    # title = chat.title or "<no title>"
-    # link = f"{chat_id}"
+    async def _register_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE):
+        """Registra un canale nel DB se non esiste già."""
+        async with self.lock:
+            with DatabaseManager() as db:
+                esiste = db.channel_exists(chat_id)
+                if esiste:
+                    logger.info(f"Canale {chat_title} ({chat_id}) già registrato.")
+                    return
 
-    # if add_channel(link, chat_id):
-    #     try:
-    #         await context.bot.send_message(chat_id=chat_id, text="✅ Questo canale è stato registrato correttamente!")
-    #     except Exception:
-    #         pass
-    #     await context.bot.send_message(
-    #         chat_id=ADMIN_ID,
-    #         text=f"📢 Nuovo canale registrato automaticamente!\nTitolo: {title}\nID: {chat_id}\nUsername: {username}"
-    #     )
-    #     logger.info(f"Registrato canale {title} ({chat_id}) automaticamente.")
-    # else:
-    #     logger.info(f"Canale {title} ({chat_id}) già registrato.")
+                # Notifica nel canale
+                try:
+                    await context.bot.send_message(chat_id=int(chat_id), text="✅ Sono admin, aggiungo il canale...")
+                except Exception as e:
+                    logger.warning(f"Impossibile inviare messaggio nel canale {chat_id}: {e}")
+
+                # Aggiunge il canale al DB
+                await db.add_channel(chat_id, chat_title)
+
+                # Notifica admin
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=f"📢 Canale registrato!\nTitolo: {chat_title}\nID: {chat_id}"
+                )
+                logger.info(f"Registrato canale {chat_title} ({chat_id})")
+
+    async def _remove_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE):
+        """Rimuove un canale dal DB e notifica l'admin."""
+        async with self.lock:
+            remove_channel(chat_id)  # Funzione locale che gestisce la rimozione dal DB
+
+            with DatabaseManager() as db:
+                await db.delete_channel(chat_id)
+
+            await context.bot.send_message(
+                chat_id=Settings.ADMIN_ID,
+                text=f"⚠️ Sono stato rimosso o ho perso i permessi dal canale {chat_title} ({chat_id}).\n"
+                     "Il canale e i post associati sono stati rimossi dal database."
+            )
+            logger.info(f"Rimosso canale {chat_title} ({chat_id}) dal DB")
