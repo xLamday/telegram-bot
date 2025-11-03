@@ -62,18 +62,19 @@ class ComandiBot:
 
 
     # ------------------ PUBBLICA ------------------
-    async def cmd_pubblica(self, update: Update, context: ContextTypes.DEFAULT_TYPE, timeout: int = 120):
+    async def cmd_pubblica(self, update: Update, context: ContextTypes.DEFAULT_TYPE, timeout: int = 60):
         """Abilita lo stato di pubblicazione per un utente e resetta dopo timeout."""
         user_id = update.effective_user.id
         self.publishing_state[user_id] = True
+        Settings.invio = True
         await update.message.reply_text("Inoltra ora il messaggio da pubblicare nei canali privati.")
         self.logger.info(f"Utente {user_id} ha iniziato la pubblicazione. Stato invio: {Settings.invio}")
 
-        # # Reset automatico dopo timeout
-        # async def reset_state():
-        #     await asyncio.sleep(timeout)
-        #     self.publishing_state[user_id] = False
-        #     Settings.invio = False
-        #     logger.info(f"Stato pubblicazione reset per utente {user_id}. Stato invio: {Settings.invio}")
-
-        # asyncio.create_task(reset_state())
+        # Reset automatico dopo timeout
+        async def reset_state():
+             await asyncio.sleep(timeout)
+             self.publishing_state[user_id] = False
+             Settings.invio = False
+             self.logger.info(f"Stato pubblicazione reset per utente {user_id}. Stato invio: {Settings.invio}")
+             await update.message.reply_text("Hai impiegato troppo tempo per inviare il messaggio!")
+        asyncio.create_task(reset_state())
