@@ -53,7 +53,7 @@ class BotMonitor:
                     except Forbidden:
                         await context.bot.send_message(
                             chat_id=Settings.ADMIN_ID,
-                            text=f"⚠️ Non posso accedere al canale {chat_id}, potrebbe essere stato rimosso!"
+                            text=f"⚠️ Non posso accedere al canale {chat_id}, il canale è stato rimosso!"
                         )
                         self.logger.warning(f"Accesso proibito al canale {chat_id}")
                         db.delete_post(chat_id, msg_id)
