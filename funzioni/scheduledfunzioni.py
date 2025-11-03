@@ -2,7 +2,6 @@
 import asyncio
 from telegram.error import TelegramError, BadRequest, Forbidden, RetryAfter
 from telegram.ext import ContextTypes
-import re
 from loggerinfo import LoggerInfo
 from funzioni.system import ChannelManager
 from config.settings import Settings
