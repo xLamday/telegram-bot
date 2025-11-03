@@ -2,6 +2,7 @@
 import asyncio
 from telegram.error import TelegramError, BadRequest, Forbidden, RetryAfter
 from telegram.ext import ContextTypes
+import re
 from loggerinfo import LoggerInfo
 from funzioni.system import ChannelManager
 from config.settings import Settings
@@ -59,10 +60,18 @@ class BotMonitor:
                             self.logger.warning(f"Accesso proibito al canale {chat_id}")
                             db.delete_post(chat_id, msg_id)
                             db.delete_channel(chat_id)
+
                         except TelegramError as e:
-                            self.logger.warning(f"Errore Telegram controllando il messaggio {msg_id} in {chat_id}: {e}")
+                            if "Flood control exceeded" in str(e):
+                                match = re.search(r"Retry in (\d+) seconds", str(e))
+                                if match:
+                                    wait_time = int(match.group(1))
+                                    self.logger.warning(f"⏸ Flood control attivo: attendo {wait_time} secondi...")
+                                    await asyncio.sleep(wait_time + 5)
+                                    continue  # riprende dopo la pausa
             finally:
                 Settings.controllo_canali_attivo = False
+                self.logger.info("✅ Controllo post eliminati completato.")
 
     async def _forward_message_safe(self, context: ContextTypes.DEFAULT_TYPE, chat_id, msg_id, tentativi: int = 3):
         """Forward/copy message con retry in caso di RetryAfter o errori transitori."""
