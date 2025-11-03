@@ -32,34 +32,37 @@ class BotMonitor:
         async with self._lock_check_post:
             
             self.logger.info("🚀 Avvio controllo post eliminati...")
+            Settings.controllo_canali_attivo = True
+            try:
+                with DatabaseManager() as db:
+                    posts = db.fetch_all_posts()
+                    for chat_id, msg_id, title in posts:
+                        try:
+                            await asyncio.sleep(2)
+                            await self._forward_message_safe(context, chat_id, msg_id)
+                            self.logger.info(f"Messaggio {msg_id} da {title} inoltrato al canale di controllo")
+                        except BadRequest:
+                            # Messaggio eliminato
+                            await context.bot.send_message(
+                                chat_id=Settings.ADMIN_ID,
+                                text=f"⚠️ Il messaggio pubblicato nel canale {chat_id}, titolo: {title}, è possibile che sia stato eliminato!"
+                            )
+                            #db.delete_post(chat_id, msg_id)
 
-            with DatabaseManager() as db:
-                posts = db.fetch_all_posts()
-                for chat_id, msg_id, title in posts:
-                    try:
-                        await asyncio.sleep(2)
-                        await self._forward_message_safe(context, chat_id, msg_id)
-                        self.logger.info(f"Messaggio {msg_id} da {title} inoltrato al canale di controllo")
-                    except BadRequest:
-                        # Messaggio eliminato
-                        await context.bot.send_message(
-                            chat_id=Settings.ADMIN_ID,
-                            text=f"⚠️ Il messaggio pubblicato nel canale {chat_id}, titolo: {title}, è possibile che sia stato eliminato!"
-                        )
-                        #db.delete_post(chat_id, msg_id)
+                            self.logger.info(f"Possibile post eliminato in {chat_id}, {title}. ")
 
-                        self.logger.info(f"Possibile post eliminato in {chat_id}, {title}. ")
-
-                    except Forbidden:
-                        await context.bot.send_message(
-                            chat_id=Settings.ADMIN_ID,
-                            text=f"⚠️ Non posso accedere al canale {chat_id}, il canale è stato rimosso!"
-                        )
-                        self.logger.warning(f"Accesso proibito al canale {chat_id}")
-                        db.delete_post(chat_id, msg_id)
-                        db.delete_channel(chat_id)
-                    except TelegramError as e:
-                        self.logger.warning(f"Errore Telegram controllando il messaggio {msg_id} in {chat_id}: {e}")
+                        except Forbidden:
+                            await context.bot.send_message(
+                                chat_id=Settings.ADMIN_ID,
+                                text=f"⚠️ Non posso accedere al canale {chat_id}, il canale è stato rimosso!"
+                            )
+                            self.logger.warning(f"Accesso proibito al canale {chat_id}")
+                            db.delete_post(chat_id, msg_id)
+                            db.delete_channel(chat_id)
+                        except TelegramError as e:
+                            self.logger.warning(f"Errore Telegram controllando il messaggio {msg_id} in {chat_id}: {e}")
+            finally:
+                Settings.controllo_canali_attivo = False
 
     async def _forward_message_safe(self, context: ContextTypes.DEFAULT_TYPE, chat_id, msg_id, tentativi: int = 3):
         """Forward/copy message con retry in caso di RetryAfter o errori transitori."""

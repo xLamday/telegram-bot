@@ -57,7 +57,7 @@ class RegistrazioneCanale:
                     self.logger.warning(f"Impossibile inviare messaggio nel canale {chat_id}: {e}")
 
                 # Aggiunge il canale al DB
-
+                db.add_channel(chat_id, chat_title)
                 # Notifica admin
                 await context.bot.send_message(
                     chat_id=Settings.ADMIN_ID,
