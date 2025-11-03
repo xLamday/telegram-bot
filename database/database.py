@@ -2,7 +2,7 @@
 import sqlite3
 from typing import List, Tuple, Optional
 from database.connection import get_connection
-from loggerinfo import logger
+from loggerinfo import LoggerInfo
 
 
 class DatabaseManager:
@@ -10,6 +10,7 @@ class DatabaseManager:
 
     def __init__(self):
         self.conn: Optional[sqlite3.Connection] = None
+        self.logger = LoggerInfo(name="Database").get_logger()
 
     # ------------------- CONTEXT MANAGER -------------------
     def __enter__(self):
@@ -38,7 +39,7 @@ class DatabaseManager:
             (channel_chat_id, forwarded_message_id)
         )
         self.conn.commit()
-        logger.info(f"Post {forwarded_message_id} rimosso dal canale {channel_chat_id}")
+        self.logger.info(f"Post {forwarded_message_id} rimosso dal canale {channel_chat_id}")
 
     def count_posts(self, channel_chat_id: int) -> int:
         cursor = self.conn.cursor()
@@ -67,7 +68,7 @@ class DatabaseManager:
         """
         self.conn.execute(query, (original_message_id, channel_chat_id, forwarded_message_id))
         self.conn.commit()
-        logger.info(f"Post {forwarded_message_id} salvato per canale {channel_chat_id}")
+        self.logger.info(f"Post {forwarded_message_id} salvato per canale {channel_chat_id}")
 
     # ------------------- CHANNELS -------------------
     def fetch_all_channels(self) -> List[Tuple[int, Optional[str]]]:
@@ -79,7 +80,7 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
         self.conn.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
         self.conn.commit()
-        logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
+        self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
 
     def channel_exists(self, chat_id: int) -> bool:
         cursor = self.conn.cursor()
@@ -94,4 +95,4 @@ class DatabaseManager:
                 (chat_id, title)
             )
             self.conn.commit()
-            logger.info(f"Nuovo canale aggiunto: {chat_id} - {title}")
+            self.logger.info(f"Nuovo canale aggiunto: {chat_id} - {title}")

@@ -14,7 +14,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import TelegramError
-from loggerinfo import logger
+from loggerinfo import LoggerInfo
 
 # Import aggiornati delle classi/istanze che abbiamo creato
 from config.settings import Settings
@@ -26,6 +26,7 @@ from funzioni.registra import RegistrazioneCanale
 from funzioni.system import ChannelManager
 from funzioni.scheduledfunzioni import BotMonitor
 
+logger = LoggerInfo(name="main").get_logger()
 
 # ====================== ERROR HANDLER ======================
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -53,10 +54,10 @@ def main():
         return
 
     # Crea le istanze delle classi che gestiscono la logica
-    bot_commands = ComandiBot()
     RegistrazioneCanali = RegistrazioneCanale()
     channel_manager = ChannelManager()
     bot_monitor = BotMonitor()
+    bot_commands = ComandiBot(bot_monitor=bot_monitor)
 
     # Crea l'applicazione
     app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).build()
@@ -69,17 +70,22 @@ def main():
     app.add_handler(CommandHandler("rimuovi", bot_commands.rimuovi))
     # /pubblica
     app.add_handler(CommandHandler("pubblica", bot_commands.cmd_pubblica))
+    # /check_canali
+    app.add_handler(CommandHandler("check_canali", bot_commands.check_canali))
 
 
     # === EVENTI CHAT MEMBER ===
     # Quando il bot viene rimosso / perde permessi
-    app.add_handler(ChatMemberHandler(channel_manager.bot_rimosso, chat_member_types=["my_chat_member"]))
-    # Quando il bot viene aggiunto come admin (registrazione automatica canali privati)
     app.add_handler(ChatMemberHandler(RegistrazioneCanali.handle_chat_member_update, chat_member_types=["my_chat_member"]))
+
+
+    # app.add_handler(ChatMemberHandler(channel_manager.bot_rimosso, chat_member_types=["my_chat_member"]))
+    # Quando il bot viene aggiunto come admin (registrazione automatica canali privati)
+    # app.add_handler(ChatMemberHandler(RegistrazioneCanali.handle_chat_member_update, chat_member_types=["my_chat_member"]))
 
     # === MESSAGGI PRIVATI ===
     # Handler per ricevere il messaggio che deve essere inoltrato ai canali (stato pubblicazione)
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), channel_manager.handle_forward_message))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, channel_manager.handle_forward_message))
 
     # === SCAN POST CANALE (codice privato) ===
     # Quando un canale pubblica un post (usato per rilevare il codice generato con /registra)

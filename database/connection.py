@@ -3,7 +3,6 @@ Database connection management.
 """
 import sqlite3
 from config.settings import Settings
-import logging
 
 def get_connection():
     """Get a database connection."""
@@ -27,6 +26,7 @@ def setup_database():
         """
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            original_message_id INTEGER NOT NULL,
             channel_chat_id INTEGER NOT NULL,
             forwarded_message_id INTEGER NOT NULL,
             FOREIGN KEY(channel_chat_id) REFERENCES channels(chat_id) ON DELETE CASCADE,

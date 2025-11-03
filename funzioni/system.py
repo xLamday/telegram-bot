@@ -4,7 +4,7 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.error import RetryAfter
-from loggerinfo import logger
+from loggerinfo import LoggerInfo
 from config.settings import Settings
 from database.database import DatabaseManager
 
@@ -16,6 +16,7 @@ class ChannelManager:
     def __init__(self):
         self.publishing_state = {}
         self.processo_lock = asyncio.Lock()
+        self.logger = LoggerInfo(name="ChannelManager").get_logger()
 
     # ------------------ ADD / REMOVE CHANNEL ------------------
     def add_channel(self, title: str, chat_id: str) -> bool:
@@ -37,11 +38,10 @@ class ChannelManager:
     # ------------------ HANDLE FORWARD MESSAGE ------------------
     async def handle_forward_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Inoltra il messaggio dell'utente a tutti i canali registrati."""
-        user_id = update.effective_user.id
-        if not self.publishing_state.get(user_id):
-            return
-
-        self.publishing_state[user_id] = False  # reset stato
+        # user_id = update.effective_user.id
+        # if not self.publishing_state.get(user_id):
+        #     return
+  # reset stato
         if not update.message:
             await update.effective_user.send_message("❌ Non ho ricevuto un messaggio valido.")
             return
@@ -52,7 +52,7 @@ class ChannelManager:
         async with self.processo_lock:
             Settings.invio = True
             Settings.processo_invio = True
-            logger.info(f"Inizio invio messaggi dall'utente {user_id}")
+            self.logger.info(f"Inizio invio messaggi dall'admin")
 
             with DatabaseManager() as db:
                 canali = db.fetch_all_channels()
@@ -67,6 +67,8 @@ class ChannelManager:
                             if o_chat_id == chat_id:
                                 try:
                                     await context.bot.delete_message(chat_id=int(chat_id), message_id=fwd_id)
+                                    db.delete_post(chat_id, fwd_id)
+                                    self.logger.info(f"Post {fwd_id} eliminato da {chat_id} e rimosso dal DB")
                                 except Exception:
                                     pass
 
@@ -77,17 +79,18 @@ class ChannelManager:
                             message_id=msg_id_orig
                         )
 
+                        self.logger.info(F"Connessione al database in corso...")
                         db.upsert_post(msg_id_orig, chat_id, fwd_msg.message_id)
                     except RetryAfter as e:
-                        logger.warning(f"Rate limit: attendere {e.retry_after} secondi")
+                        self.logger.warning(f"Rate limit: attendere {e.retry_after} secondi")
                         await asyncio.sleep(e.retry_after + 1)
                     except Exception as e:
-                        logger.error(f"Errore inoltrando messaggio al canale {chat_id}: {e}")
+                        self.logger.error(f"Errore inoltrando messaggio al canale {chat_id}: {e}")
 
             Settings.invio = False
             Settings.processo_invio = False
             await update.message.reply_text("Messaggio pubblicato nei canali privati.")
-            logger.info("Invio completato a tutti i canali registrati.")
+            self.logger.info("Invio completato a tutti i canali registrati.")
 
     # ------------------ BOT RIMOSSO ------------------
     async def bot_rimosso(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +121,7 @@ class ChannelManager:
                 text=f"⚠️ Sono stato rimosso dal canale privato {chat_title} ({chat_id}) "
                      "e tutti i post associati sono stati rimossi dal database."
             )
-            logger.info(f"Bot rimosso dal canale {chat_title} ({chat_id}) e dati eliminati.")
+            self.logger.info(f"Bot rimosso dal canale {chat_title} ({chat_id}) e dati eliminati.")
 
     # ------------------ SCAN CHANNEL (CODICE PRIVATO) ------------------
     # async def scan_channel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
