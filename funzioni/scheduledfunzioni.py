@@ -76,7 +76,7 @@ class BotMonitor:
         """Forward/copy message con retry in caso di RetryAfter o errori transitori."""
         for prova in range(1, tentativi + 1):
             try:
-                await context.bot.forward_message(
+                await context.bot.copy_message(
                     chat_id=Settings.CANALE_CONTROLLO,
                     from_chat_id=int(chat_id),
                     message_id=msg_id
