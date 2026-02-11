@@ -49,7 +49,7 @@ def main():
     try:
         setup_database()
         logger.info("Database inizializzato correttamente.")
-        logger.info("Versione del bot: 1.0.0")
+        logger.info("Versione del bot: 2.0.0")
     except Exception as e:
         logger.critical(f"Errore durante init_db(): {e}")
         return
