@@ -49,15 +49,18 @@ def main():
     try:
         setup_database()
         logger.info("Database inizializzato correttamente.")
+        logger.info("Versione del bot: 1.0.0")
     except Exception as e:
         logger.critical(f"Errore durante init_db(): {e}")
         return
 
     # Crea le istanze delle classi che gestiscono la logica
     RegistrazioneCanali = RegistrazioneCanale()
-    channel_manager = ChannelManager()
     bot_monitor = BotMonitor()
     bot_commands = ComandiBot(bot_monitor=bot_monitor)
+
+    channel_manager = ChannelManager()
+    channel_manager.set_cmd_handler(bot_commands)
 
     # Crea l'applicazione
     app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).build()

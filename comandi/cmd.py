@@ -16,6 +16,7 @@ class ComandiBot:
         self.botmonitor = bot_monitor
         self.logger = LoggerInfo(name="ComandiBot").get_logger()
         self.logger.info(f"🧠 ComandiBot collegato a BotMonitor {id(self.botmonitor)}")
+        self.reset_tasks = {}
 
     # ------------------ START ------------------
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,6 +66,9 @@ class ComandiBot:
     async def cmd_pubblica(self, update: Update, context: ContextTypes.DEFAULT_TYPE, timeout: int = 60):
         """Abilita lo stato di pubblicazione per un utente e resetta dopo timeout."""
         user_id = update.effective_user.id
+        if user_id in self.reset_tasks and not self.reset_tasks[user_id].done():
+            self.reset_tasks[user_id].cancel()
+        
         self.publishing_state[user_id] = True
         Settings.invio = True
         await update.message.reply_text("Inoltra ora il messaggio da pubblicare nei canali privati.")
@@ -72,9 +76,18 @@ class ComandiBot:
 
         # Reset automatico dopo timeout
         async def reset_state():
+            try:
              await asyncio.sleep(timeout)
-             self.publishing_state[user_id] = False
-             Settings.invio = False
-             self.logger.info(f"Stato pubblicazione reset per utente {user_id}. Stato invio: {Settings.invio}")
-             await update.message.reply_text("Hai impiegato troppo tempo per inviare il messaggio!")
-        asyncio.create_task(reset_state())
+             if self.publishing_state.get(user_id, False):
+                 self.publishing_state[user_id] = False
+                 Settings.invio = False
+                 self.logger.info(f"Stato pubblicazione reset per utente {user_id}. Stato invio: {Settings.invio}")
+                 await update.message.reply_text("Hai impiegato troppo tempo per inviare il messaggio!")
+                 if user_id in self.reset_tasks:
+                        del self.reset_tasks[user_id]
+            except asyncio.CancelledError:
+                self.logger.info(f"Task di reset cancellato per utente {user_id} (messaggio inviato in tempo)")
+            except Exception as e:
+                self.logger.error(f"Errore nel reset dello stato di pubblicazione per utente {user_id}: {e}")
+            # Salva il task nel dizionario
+        self.reset_tasks[user_id] = asyncio.create_task(reset_state())

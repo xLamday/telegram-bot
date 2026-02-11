@@ -13,10 +13,13 @@ DELAY = 2  # default delay tra invii
 class ChannelManager:
     """Gestione canali, invio messaggi e rimozioni."""
 
-    def __init__(self):
+    def __init__(self, comandi_bot=None):
         self.publishing_state = {}
         self.processo_lock = asyncio.Lock()
         self.logger = LoggerInfo(name="ChannelManager").get_logger()
+        self.reset_tasks = {}
+        self.comandi_bot = comandi_bot
+        self.logger.info(f"ComandiBot collegato a ChannelManager {id(self.comandi_bot)}")
 
     # ------------------ ADD / REMOVE CHANNEL ------------------
     def add_channel(self, title: str, chat_id: str) -> bool:
@@ -35,12 +38,18 @@ class ChannelManager:
                 db.delete_channel(identifier)
                 return True
 
+    def set_cmd_handler(self, comandi_bot):
+        """Imposta il riferimento al command handler dopo l'inizializzazione."""
+        self.comandi_bot = comandi_bot
+        self.logger.info("✅ Command handler collegato a ChannelManager")
+
     # ------------------ HANDLE FORWARD MESSAGE ------------------
     async def handle_forward_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Inoltra il messaggio dell'utente a tutti i canali registrati."""
-        # user_id = update.effective_user.id
-        # if not self.publishing_state.get(user_id):
-        #     return
+        user_id = update.effective_user.id
+        if not self.comandi_bot.publishing_state.get(user_id, False):
+            self.logger.debug(f"Utente {user_id} non in stato pubblicazione, ignoro messaggio")
+            return
   # reset stato
         if not update.message:
             await update.effective_user.send_message("❌ Non ho ricevuto un messaggio valido.")
@@ -86,6 +95,22 @@ class ChannelManager:
                         await asyncio.sleep(e.retry_after + 1)
                     except Exception as e:
                         self.logger.error(f"Errore inoltrando messaggio al canale {chat_id}: {e}")
+                        # Resetta comunque lo stato in caso di errore
+                        if user_id in self.comandi_bot.reset_tasks:
+                            task = self.comandi_bot.reset_tasks[user_id]
+                            if not task.done():
+                                task.cancel()
+                            del self.comandi_bot.reset_tasks[user_id]
+                        
+                        self.comandi_bot.publishing_state[user_id] = False
+                        Settings.invio = False
+                        await update.message.reply_text(f"❌ Errore nella pubblicazione: {e}")
+            if user_id in self.comandi_bot.reset_tasks:
+                task = self.comandi_bot.reset_tasks[user_id]
+                if not task.done():
+                    task.cancel()
+                    self.logger.info(f"✅ Task di timeout cancellato per utente {user_id}")
+                del self.comandi_bot.reset_tasks[user_id]
 
             Settings.invio = False
             Settings.processo_invio = False

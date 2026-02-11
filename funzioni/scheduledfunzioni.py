@@ -24,8 +24,8 @@ class BotMonitor:
         # Configurazione per la gestione di molti canali
         self.batch_size = 10  # Processa N canali alla volta
         self.delay_between_batches = 10  # Secondi tra un batch e l'altro
-        self.delay_between_checks = 1.5  # Secondi tra un controllo e l'altro nello stesso batch
-        self.max_concurrent_tasks = 2  # Task simultanei per batch
+        self.delay_between_checks = 2.5  # Secondi tra un controllo e l'altro nello stesso batch
+        self.max_concurrent_tasks = 2  # Task simultanei per batch (Quanti messaggi possono essere inoltrati contemporaneamente)
         
     async def check_post_eliminati(self, context: ContextTypes.DEFAULT_TYPE):
         """Controlla se i post sono stati eliminati e segnala all'admin."""
