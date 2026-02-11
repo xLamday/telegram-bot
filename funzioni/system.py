@@ -50,7 +50,7 @@ class ChannelManager:
         if not self.comandi_bot.publishing_state.get(user_id, False):
             self.logger.debug(f"Utente {user_id} non in stato pubblicazione, ignoro messaggio")
             return
-  # reset stato
+         # reset stato
         if not update.message:
             await update.effective_user.send_message("❌ Non ho ricevuto un messaggio valido.")
             return
@@ -110,10 +110,11 @@ class ChannelManager:
                 if not task.done():
                     task.cancel()
                     self.logger.info(f"✅ Task di timeout cancellato per utente {user_id}")
-                del self.comandi_bot.reset_tasks[user_id]
+                    del self.comandi_bot.reset_tasks[user_id]
 
             Settings.invio = False
             Settings.processo_invio = False
+            self.comandi_bot.publishing_state[user_id] = False
             await update.message.reply_text("Messaggio pubblicato nei canali privati.")
             self.logger.info("Invio completato a tutti i canali registrati.")
 

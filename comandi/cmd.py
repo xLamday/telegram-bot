@@ -87,6 +87,8 @@ class ComandiBot:
                         del self.reset_tasks[user_id]
             except asyncio.CancelledError:
                 self.logger.info(f"Task di reset cancellato per utente {user_id} (messaggio inviato in tempo)")
+                Settings.invio = False
+                Settings.processo_invio = False
             except Exception as e:
                 self.logger.error(f"Errore nel reset dello stato di pubblicazione per utente {user_id}: {e}")
             # Salva il task nel dizionario
