@@ -82,7 +82,7 @@ class ChannelManager:
                                     pass
 
                         # copia il messaggio
-                        fwd_msg = await context.bot.copy_message(
+                        fwd_msg = await context.bot.forward_message(
                             chat_id=int(chat_id),
                             from_chat_id=chat_id_orig,
                             message_id=msg_id_orig
