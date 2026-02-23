@@ -49,7 +49,7 @@ def main():
     try:
         setup_database()
         logger.info("Database inizializzato correttamente.")
-        logger.info("Versione del bot: 2.0.0")
+        
     except Exception as e:
         logger.critical(f"Errore durante init_db(): {e}")
         return
@@ -63,7 +63,7 @@ def main():
     channel_manager.set_cmd_handler(bot_commands)
 
     # Crea l'applicazione
-    app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).build()
+    app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).post_init(on_startup).build()
     job_queue = app.job_queue
 
     # === HANDLER COMANDI ===
@@ -98,7 +98,8 @@ def main():
     # === JOBS PERIODICI ===
     try:
         # bot_monitor.check_bot_admin e check_post_eliminati sono metodi async dell'istanza
-        job_queue.run_repeating(bot_monitor.check_bot_admin, interval=120, first=10)
+        job_queue.run_once(bot_monitor.check_bot_admin, when=10)
+        job_queue.run_repeating(bot_monitor.check_bot_admin, interval=3600)
         job_queue.run_repeating(bot_monitor.check_post_eliminati, interval=60, first=15)
         logger.info("Job periodici avviati con successo.")
     except Exception as e:
@@ -111,11 +112,20 @@ def main():
     logger.info("🚀 Avvio del bot...")
     try:
         app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        # all'avvio
     except (KeyboardInterrupt, SystemExit):
         logger.info("🛑 Arresto del bot richiesto dall’utente.")
     except Exception as e:
         logger.critical(f"Errore critico durante run_polling(): {e}")
 
+async def on_startup(app):
+    bot = await app.bot.get_me()
+    app.bot_data["bot_id"] = bot.id
+    
+    logger.info(f"🤖 Bot avviato correttamente")
+    logger.info(f"🆔 ID BOT: {bot.id}")
+    logger.info(f"👤 Username: @{bot.username}")
+    logger.info(f"🆚 Versione del bot: 2.1.1")
 
 if __name__ == "__main__":
     main()

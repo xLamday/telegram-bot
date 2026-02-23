@@ -26,6 +26,8 @@ class BotMonitor:
         self.delay_between_batches = 10  # Secondi tra un batch e l'altro
         self.delay_between_checks = 2.5  # Secondi tra un controllo e l'altro nello stesso batch
         self.max_concurrent_tasks = 2  # Task simultanei per batch (Quanti messaggi possono essere inoltrati contemporaneamente)
+        self._first_admin_check_done = False
+
         
     async def check_post_eliminati(self, context: ContextTypes.DEFAULT_TYPE):
         """Controlla se i post sono stati eliminati e segnala all'admin."""
@@ -238,6 +240,7 @@ class BotMonitor:
         
         tasks = [check_with_semaphore(channel) for channel in batch]
         await asyncio.gather(*tasks, return_exceptions=True)
+        
     
     async def _check_single_channel_admin(
         self,
@@ -245,35 +248,32 @@ class BotMonitor:
         chat_id: str,
         title: str
     ):
-        """Controlla i permessi admin per un singolo canale."""
+        """Fallback check per quando il bot era offline. Soggetto a cache Telegram."""
+        bot_id = context.application.bot_data["bot_id"]
         try:
             admins = await context.bot.get_chat_administrators(int(chat_id))
-            bot_admin = any(a.user.id == context.bot.id for a in admins)
-            
-            if not bot_admin:
+            admin_ids = {a.user.id for a in admins}
+
+            if bot_id not in admin_ids:
+                self.logger.warning(f"⚠️ [FALLBACK] Bot non admin su '{title}'")
                 await self._handle_lost_admin_rights(context, chat_id, title)
-                
+            else:
+                self.logger.info(f"✅ [FALLBACK] Bot admin su '{title}'")
+
         except RetryAfter as e:
             wait_time = e.retry_after + 2
-            self.logger.warning(
-                f"🚦 Rate limit su canale {title}: attesa {wait_time}s"
-            )
+            self.logger.warning(f"🚦 Rate limit su '{title}': attesa {wait_time}s")
             await asyncio.sleep(wait_time)
-            # Riprova una volta
             await self._check_single_channel_admin(context, chat_id, title)
-            
+
         except (BadRequest, Forbidden) as e:
             await self._notify_admin_inaccessible_channel(
                 context, chat_id, title, type(e).__name__
             )
-            self.logger.warning(
-                f"⚠️ Impossibile controllare canale {title}: {e}"
-            )
-            
+            self.logger.warning(f"⚠️ Impossibile controllare '{title}': {e}")
+
         except TelegramError as e:
-            self.logger.error(
-                f"❌ Errore controllando canale {title}: {e}"
-            )
+            self.logger.error(f"❌ Errore controllando '{title}': {e}")
     
     # Metodi helper per notifiche
     async def _notify_admin_deleted_post(
@@ -353,16 +353,19 @@ class BotMonitor:
         title: str
     ):
         """Gestisce la perdita dei permessi admin."""
-        self.system.remove_channel(chat_id)
+        self.logger.warning(f"🔴 _handle_lost_admin_rights chiamata per '{title}'")
+        await self.system._remove_channel_after_error(chat_id, title, context)
         
         try:
+            messaggio = (
+                "⚠️ Ho perso i permessi admin!\n"
+                f"🆔 Canale: {chat_id}\n"
+                f"📢 Titolo: {title}"
+            )
             await context.bot.send_message(
                 chat_id=Settings.ADMIN_ID,
-                text=(
-                    f"⚠️ Ho perso i permessi admin!\n"
-                    f"🆔 Canale: {chat_id}\n"
-                    f"📢 Titolo: {title}"
-                )
+                text=messaggio,
+                parse_mode="HTML"
             )
         except TelegramError as e:
             self.logger.error(f"Errore notifica perdita admin: {e}")
