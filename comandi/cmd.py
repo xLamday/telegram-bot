@@ -26,7 +26,7 @@ class ComandiBot:
             "👋 Ciao!\n\n"
             "➡️ /registra genererà un codice da inviare all'admin del canale che si vuole registrare.\n"
             "L'admin dovrà inserire quel codice per completare la registrazione.\n"
-            "➡️ Per canali privati: basta pubblicare un messaggio nel canale dove sono admin, "
+            "➡️ Per canali privati: basta inserire il bot come admin nel canale dove si vuole registrare, "
             "il bot rileverà automaticamente.\n"
             "➡️ /rimuovi <link o ID> per rimuovere un canale.\n"
             "➡️ /pubblica per inoltrare un messaggio a tutti i canali privati registrati.\n"

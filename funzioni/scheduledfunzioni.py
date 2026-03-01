@@ -266,12 +266,15 @@ class BotMonitor:
             await asyncio.sleep(wait_time)
             await self._check_single_channel_admin(context, chat_id, title)
 
-        except (BadRequest, Forbidden) as e:
+        except BadRequest as e:
             await self._notify_admin_inaccessible_channel(
                 context, chat_id, title, type(e).__name__
             )
             self.logger.warning(f"⚠️ Impossibile controllare '{title}': {e}")
 
+        except Forbidden:
+            await self._notify_admin_forbidden_channel(context, chat_id, title)
+            await self._remove_forbidden_channel(chat_id, title)
         except TelegramError as e:
             self.logger.error(f"❌ Errore controllando '{title}': {e}")
     
@@ -340,9 +343,8 @@ class BotMonitor:
         """Rimuove un canale non accessibile dal database."""
         try:
             with DatabaseManager() as db:
-                db.delete_post(chat_id, msg_id)
-                db._delete_only_channel(chat_id)
-            self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database, azione ")
+                db.delete_channel(chat_id)
+            self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database")
         except Exception as e:
             self.logger.error(f"Errore rimozione canale {chat_id}: {e}")
     

@@ -233,10 +233,14 @@ class DatabaseManager:
         return self.cursor.fetchall()
 
     def delete_channel(self, chat_id: int):
-        self.cursor.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
-        self.cursor.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
-        self.conn.commit()
-        self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
+        try:
+            self.cursor.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
+            self.cursor.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            self.conn.commit()
+            self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
+        except sqlite3.Error as e:
+            self.logger.error(f"Errore eliminazione canale {chat_id}: {e}")
+            return False
 
     def _delete_only_channel(self, chat_id: int):
         """
