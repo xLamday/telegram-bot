@@ -1,11 +1,12 @@
 # bot_commands.py
 import asyncio
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, filters
 from loggerinfo import LoggerInfo
 from funzioni.system import ChannelManager
 from funzioni.scheduledfunzioni import BotMonitor
 from config.settings import Settings
+from database.database import DatabaseManager
 
 class ComandiBot:
     """Gestisce tutti i comandi del bot Telegram."""
@@ -28,9 +29,46 @@ class ComandiBot:
             "➡️ Per canali privati: basta pubblicare un messaggio nel canale dove sono admin, "
             "il bot rileverà automaticamente.\n"
             "➡️ /rimuovi <link o ID> per rimuovere un canale.\n"
-            "➡️ /pubblica per inoltrare un messaggio a tutti i canali privati registrati."
+            "➡️ /pubblica per inoltrare un messaggio a tutti i canali privati registrati.\n"
+            "➡️ /check_duplicati per controllare se ci sono post duplicati nel database.\n"
+            "➡️ /pulisci_duplicati per rimuovere i post duplicati dal database.\n"
+            "➡️ /check_canali per controllare se i canali privati sono registrati e se i post sono stati inoltrati correttamente."
         )
         await update.message.reply_text(text)
+
+    # ------------------ CHECK DUPLICATI ------------------
+    async def check_duplicati(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Controlla se ci sono post duplicati nel database senza eliminarli."""
+        try:
+            with DatabaseManager() as db:
+                duplicati = db.get_duplicate_posts()
+                if not duplicati:
+                    await update.message.reply_text("✅ Nessun post duplicato trovato.")
+                    return
+                
+                text = f"⚠️ Trovati duplicati in {len(duplicati)} canali:\n\n"
+                for channel_chat_id, count, title in duplicati:
+                    nome = title if title else channel_chat_id
+                    text += f"• Canale con titolo '{nome}' ha {count} post duplicati\n"
+                text += "\nUsa /pulisci_duplicati per rimuoverli."
+                await update.message.reply_text(text)
+        except Exception as e:
+            self.logger.error(f"Errore controllo duplicati: {e}")
+            await update.message.reply_text(f"❌ Errore controllo duplicati: {e}")
+
+    # ------------------ PULISCI DUPLICATI ------------------
+    async def pulisci_duplicati(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Pulisce i post duplicati dal database."""
+        try:
+            with DatabaseManager() as db:
+                deleted_count = db.remove_duplicate_posts()
+                if deleted_count > 0:
+                    await update.message.reply_text(f"✅ Rimossi {deleted_count} post duplicati.")
+                else:
+                    await update.message.reply_text("❌ Nessun post duplicato da rimuovere.")
+        except Exception as e:
+            self.logger.error(f"Errore pulizia duplicati: {e}")
+            await update.message.reply_text(f"❌ Errore pulizia duplicati: {e}")
 
     # ------------------ RIMUOVI CANALE ------------------
     async def rimuovi(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

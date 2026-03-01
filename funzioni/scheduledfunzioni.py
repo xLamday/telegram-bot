@@ -28,7 +28,7 @@ class BotMonitor:
         self.max_concurrent_tasks = 2  # Task simultanei per batch (Quanti messaggi possono essere inoltrati contemporaneamente)
         self._first_admin_check_done = False
 
-        
+
     async def check_post_eliminati(self, context: ContextTypes.DEFAULT_TYPE):
         """Controlla se i post sono stati eliminati e segnala all'admin."""
         if Settings.processo_invio or Settings.invio or Settings.controllo_canali_attivo:
@@ -341,8 +341,8 @@ class BotMonitor:
         try:
             with DatabaseManager() as db:
                 db.delete_post(chat_id, msg_id)
-                db.delete_channel(chat_id)
-            self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database")
+                db._delete_only_channel(chat_id)
+            self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database, azione ")
         except Exception as e:
             self.logger.error(f"Errore rimozione canale {chat_id}: {e}")
     

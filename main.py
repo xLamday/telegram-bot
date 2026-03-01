@@ -70,12 +70,15 @@ def main():
     # /start
     app.add_handler(CommandHandler("start", bot_commands.start))
     # /rimuovi <id>
-    app.add_handler(CommandHandler("rimuovi", bot_commands.rimuovi))
+    app.add_handler(CommandHandler("rimuovi", bot_commands.rimuovi, filters.User(Settings.ADMIN_ID)))
     # /pubblica
-    app.add_handler(CommandHandler("pubblica", bot_commands.cmd_pubblica))
+    app.add_handler(CommandHandler("pubblica", bot_commands.cmd_pubblica, filters.User(Settings.ADMIN_ID)))
     # /check_canali
-    app.add_handler(CommandHandler("check_canali", bot_commands.check_canali))
-
+    app.add_handler(CommandHandler("check_canali", bot_commands.check_canali, filters.User(Settings.ADMIN_ID)))
+    # /pulisci_duplicati
+    app.add_handler(CommandHandler("pulisci_duplicati", bot_commands.pulisci_duplicati, filters.User(Settings.ADMIN_ID)))
+    # /check_duplicati
+    app.add_handler(CommandHandler("check_duplicati", bot_commands.check_duplicati, filters.User(Settings.ADMIN_ID)))
 
     # === EVENTI CHAT MEMBER ===
     # Quando il bot viene rimosso / perde permessi
@@ -100,7 +103,7 @@ def main():
         # bot_monitor.check_bot_admin e check_post_eliminati sono metodi async dell'istanza
         job_queue.run_once(bot_monitor.check_bot_admin, when=10)
         job_queue.run_repeating(bot_monitor.check_bot_admin, interval=3600)
-        job_queue.run_repeating(bot_monitor.check_post_eliminati, interval=60, first=15)
+        job_queue.run_repeating(bot_monitor.check_post_eliminati, interval=60)
         logger.info("Job periodici avviati con successo.")
     except Exception as e:
         logger.warning(f"Errore nell’avvio dei job periodici: {e}")
@@ -125,7 +128,7 @@ async def on_startup(app):
     logger.info(f"🤖 Bot avviato correttamente")
     logger.info(f"🆔 ID BOT: {bot.id}")
     logger.info(f"👤 Username: @{bot.username}")
-    logger.info(f"🆚 Versione del bot: 2.1.1")
+    logger.info(f"🆚 Versione del bot: 2.2.3")
 
 if __name__ == "__main__":
     main()

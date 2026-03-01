@@ -62,6 +62,8 @@ class RegistrazioneCanale:
     def _is_promoted(self, old_status: str, new_status: str) -> bool:
         """Verifica se il bot è stato promosso ad admin."""
         admin_statuses = {"administrator", "creator"}
+        
+        self._verify_admin_permissions
         return new_status in admin_statuses and old_status not in admin_statuses
 
     def _is_removed(self, old_status: str, new_status: str) -> bool:
@@ -171,6 +173,8 @@ class RegistrazioneCanale:
                 self.logger.warning(
                     f"⚠️ Bot non risulta admin in {chat_id} durante verifica"
                 )
+
+            self.logger.warning(f"Bot risulta admin in {chat_id} durante verifica")
             
             return bot_is_admin
 
