@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Log — TelePanel{% endblock %}
+{% block page_title %}Log di Sistema{% endblock %}
+{% block page_path %}/ logs{% endblock %}
+{% block nav_logs %}active{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header" style="padding:20px 24px">
+    <span class="card-title">Log Bot ({{ logs|length }})</span>
+    <div style="display:flex;gap:8px">
+      <select class="form-control" onchange="filterLogs(this.value)" style="width:130px;height:36px;font-size:12px">
+        <option value="">Tutti</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+        <option value="DEBUG">DEBUG</option>
+      </select>
+      <input type="text" class="form-control" placeholder="Cerca nei log..." oninput="searchLogs(this.value)" style="width:200px;height:36px;font-size:13px">
+    </div>
+  </div>
+  <div style="padding:0;max-height:calc(100vh - 220px);overflow-y:auto" id="log-list">
+    {% for log in logs %}
+    <div class="log-row" data-level="{{ log.level }}" data-msg="{{ log.message|lower }}"
+         style="display:flex;gap:12px;align-items:flex-start;padding:10px 24px;border-bottom:1px solid rgba(48,255,196,0.05);transition:background 0.15s">
+      <span class="badge {% if log.level == 'ERROR' %}badge-danger{% elif log.level == 'WARNING' %}badge-warning{% elif log.level == 'DEBUG' %}badge-muted{% else %}badge-info{% endif %}" style="flex-shrink:0;margin-top:1px;width:68px;justify-content:center">
+        {{ log.level }}
+      </span>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);flex-shrink:0;padding-top:2px">
+        {{ log.created_at|date:"d/m H:i:s" }}
+      </span>
+      <span style="font-size:13px;line-height:1.5;color:var(--text)">{{ log.message }}</span>
+    </div>
+    {% empty %}
+    <div class="text-muted" style="text-align:center;padding:60px">Nessun log disponibile</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let activeLevel = '';
+
+function filterLogs(level) {
+  activeLevel = level;
+  applyFilters();
+}
+
+function searchLogs(query) {
+  window._logQuery = query.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  const query = window._logQuery || '';
+  document.querySelectorAll('.log-row').forEach(row => {
+    const levelMatch = !activeLevel || row.dataset.level === activeLevel;
+    const textMatch = !query || row.dataset.msg.includes(query);
+    row.style.display = (levelMatch && textMatch) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

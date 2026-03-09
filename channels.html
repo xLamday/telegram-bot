@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Canali — TelePanel{% endblock %}
+{% block page_title %}Canali{% endblock %}
+{% block page_path %}/ canali{% endblock %}
+{% block nav_channels %}active{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="document.getElementById('add-modal').classList.add('open')">
+  + Aggiungi Canale
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header" style="padding:20px 24px">
+    <span class="card-title">Canali Registrati ({{ channels|length }})</span>
+    <div style="display:flex;gap:8px">
+      <input type="text" class="form-control" id="search-channels" placeholder="Cerca canale..." style="width:200px;height:36px;font-size:13px" oninput="filterChannels(this.value)">
+    </div>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Canale</th>
+          <th>ID Telegram</th>
+          <th>Username</th>
+          <th>Stato</th>
+          <th>Aggiunto</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody id="channels-tbody">
+        {% for ch in channels %}
+        <tr data-name="{{ ch.name|lower }}" data-id="{{ ch.pk }}">
+          <td>
+            <div style="font-weight:700">{{ ch.name }}</div>
+          </td>
+          <td class="text-mono" style="font-size:12px;color:var(--text-muted)">{{ ch.channel_id }}</td>
+          <td class="text-mono" style="font-size:12px">
+            {% if ch.username %}<span style="color:var(--accent)">@{{ ch.username }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge {% if ch.is_active %}badge-success{% else %}badge-muted{% endif %}" id="badge-{{ ch.pk }}">
+              {% if ch.is_active %}● Attivo{% else %}○ Inattivo{% endif %}
+            </span>
+          </td>
+          <td class="text-mono text-muted" style="font-size:11px">{{ ch.added_at|date:"d/m/Y" }}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" onclick="toggleChannel({{ ch.pk }})">
+                {% if ch.is_active %}Disabilita{% else %}Abilita{% endif %}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ ch.pk }}, '{{ ch.name }}')">✕</button>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-muted" style="text-align:center;padding:48px">
+          Nessun canale registrato. <a href="#" onclick="document.getElementById('add-modal').classList.add('open')" style="color:var(--accent)">Aggiungine uno →</a>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ADD CHANNEL MODAL -->
+<div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="modal-title">+ Aggiungi Canale</div>
+    <div class="form-group">
+      <label class="form-label">Nome Canale</label>
+      <input type="text" class="form-control" id="new-name" placeholder="Il mio canale">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ID Telegram</label>
+      <input type="number" class="form-control" id="new-channel-id" placeholder="-1001234567890">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Username (opzionale)</label>
+      <input type="text" class="form-control" id="new-username" placeholder="miocanale">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('open')">Annulla</button>
+      <button class="btn btn-primary" onclick="addChannel()">Aggiungi Canale</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="del-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="modal-title">Rimuovere il canale?</div>
+    <p class="text-muted" style="margin-bottom:8px">Stai per rimuovere <strong id="del-name" style="color:var(--text)"></strong>. L'operazione non è reversibile.</p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="document.getElementById('del-modal').classList.remove('open')">Annulla</button>
+      <button class="btn btn-danger" id="del-confirm-btn">✕ Rimuovi</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterChannels(query) {
+  document.querySelectorAll('#channels-tbody tr[data-name]').forEach(row => {
+    row.style.display = row.dataset.name.includes(query.toLowerCase()) ? '' : 'none';
+  });
+}
+
+async function toggleChannel(id) {
+  const r = await fetch(`/channels/${id}/toggle/`, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } });
+  const data = await r.json();
+  if (data.ok) {
+    const badge = document.getElementById(`badge-${id}`);
+    if (data.is_active) {
+      badge.className = 'badge badge-success';
+      badge.textContent = '● Attivo';
+    } else {
+      badge.className = 'badge badge-muted';
+      badge.textContent = '○ Inattivo';
+    }
+    toast('Stato canale aggiornato', 'success');
+  } else { toast('Errore aggiornamento', 'error'); }
+}
+
+function confirmDelete(id, name) {
+  document.getElementById('del-name').textContent = name;
+  document.getElementById('del-confirm-btn').onclick = () => deleteChannel(id);
+  document.getElementById('del-modal').classList.add('open');
+}
+
+async function deleteChannel(id) {
+  const r = await fetch(`/channels/${id}/delete/`, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } });
+  const data = await r.json();
+  if (data.ok) {
+    document.querySelector(`tr[data-id="${id}"]`)?.remove();
+    document.getElementById('del-modal').classList.remove('open');
+    toast('Canale rimosso', 'success');
+  } else { toast('Errore eliminazione', 'error'); }
+}
+
+async function addChannel() {
+  const name = document.getElementById('new-name').value.trim();
+  const cid = document.getElementById('new-channel-id').value.trim();
+  const username = document.getElementById('new-username').value.trim();
+  if (!name || !cid) { toast('Nome e ID obbligatori', 'error'); return; }
+
+  try {
+    const r = await fetch('http://localhost:8001/api/channels/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, channel_id: parseInt(cid), username }),
+    });
+    if (r.ok) {
+      toast('Canale aggiunto! Ricarica la pagina.', 'success');
+      document.getElementById('add-modal').classList.remove('open');
+    } else { toast('Errore FastAPI', 'error'); }
+  } catch { toast('FastAPI non raggiungibile', 'error'); }
+}
+</script>
+{% endblock %}
