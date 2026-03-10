@@ -1,10 +1,14 @@
 from django.urls import path
 from . import views, views_auth, views_admin_panel
+from .views_auth import get_access_token  # il nuovo endpoint
 
 urlpatterns = [
     # Auth
     path("login/",   views_auth.login_view,   name="login"),
     path("logout/",  views_auth.logout_view,  name="logout"),
+
+    # Endpoint per ottenere JWT dalla sessione
+    path("api/session-token/", get_access_token, name="session-token"),
 
     # Panel principale
     path("",          views.dashboard, name="dashboard"),

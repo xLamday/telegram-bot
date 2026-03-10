@@ -33,15 +33,6 @@ from shared.config import bot_config, web_config
 from web.api.dependencies import jwt_required, admin_required
 
 # ---------------------------------------------------------------------------
-import logging
-
-# Forza uvicorn a stampare TUTTI i log inclusi quelli delle app
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    force=True,
-)
-
 app = FastAPI(title="Telegram Bot — Web Panel API", version="1.0.0")
 
 app.add_middleware(
@@ -151,66 +142,43 @@ class RefreshPayload(BaseModel):
 
 @app.post("/api/auth/token", tags=["auth"])
 def login(payload: LoginPayload):
-    import traceback, logging
-    log = logging.getLogger("api.auth")
+    """
+    Autentica tramite django.contrib.auth + genera JWT con simplejwt.
+    """
+    import django
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web.core.settings")
+    if not django.apps.registry.apps.ready:
+        django.setup()
 
-    try:
-        log.info("[AUTH] Ricevuta richiesta login per: %s", payload.username)
+    from django.contrib.auth import authenticate as dj_authenticate
+    from web.core.auth import genera_token_per_utente
 
-        # STEP 1 — Django setup
-        import django
-        log.info("[AUTH] STEP 1 — django.setup()")
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web.core.settings")
-        if not django.apps.registry.apps.ready:
-            django.setup()
-        log.info("[AUTH] STEP 1 — apps.ready: %s", django.apps.registry.apps.ready)
+    class _Req:
+        META = {}
+        session = {}
+        method = "POST"
 
-        # STEP 2 — import auth helpers
-        log.info("[AUTH] STEP 2 — import web.core.auth")
-        from web.core.auth import login_utente, genera_token_per_utente
-        log.info("[AUTH] STEP 2 — import ok")
+    user = dj_authenticate(_Req(), username=payload.username, password=payload.password)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Credenziali non valide.")
 
-        # STEP 3 — authenticate
-        log.info("[AUTH] STEP 3 — authenticate()")
-        from django.test import RequestFactory
-        fake_request = RequestFactory().post("/")
-        user = login_utente(fake_request, payload.username, payload.password)
-        log.info("[AUTH] STEP 3 — user: %s", user)
-
-        if user is None:
-            log.warning("[AUTH] Credenziali non valide per: %s", payload.username)
-            raise HTTPException(status_code=401, detail="Credenziali non valide.")
-
-        # STEP 4 — genera token
-        log.info("[AUTH] STEP 4 — genera_token_per_utente()")
-        tokens = genera_token_per_utente(user)
-        log.info("[AUTH] STEP 4 — token generati ok")
-        return tokens
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        tb = traceback.format_exc()
-        # Stampa sempre, anche se il logger non è configurato
-        print(f"[AUTH] INTERNAL ERROR: {type(e).__name__}: {e}", flush=True)
-        print(tb, flush=True)
-        logging.getLogger("api.auth").error("[AUTH] INTERNAL ERROR\n%s", tb)
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+    return genera_token_per_utente(user)
 
 
 @app.post("/api/auth/refresh", tags=["auth"])
 def token_refresh(payload: RefreshPayload):
-    """Rinnova l'access token dato un refresh token valido."""
+    """Rinnova l'access token dato un refresh token valido (simplejwt)."""
+    import django
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web.core.settings")
+    if not django.apps.registry.apps.ready:
+        django.setup()
+
     from web.core.auth import refresh_access_token
     from rest_framework_simplejwt.exceptions import InvalidToken
     try:
         return refresh_access_token(payload.refresh)
     except InvalidToken as e:
         raise HTTPException(status_code=401, detail=str(e))
-
-
-# ── Routes protette da JWT ────────────────────────────────────────────────────
-
 @app.get("/api/stats", response_model=StatsSchema)
 def get_stats(db: Session = Depends(get_db), _user=Depends(jwt_required)):
     oggi = date.today()
@@ -277,3 +245,8 @@ async def broadcast(payload: BroadcastPayload, _user=Depends(admin_required)):
 
     risultato = await pubblica_su_canali(bot=_bot, testo=payload.testo)
     return {"inviato_a": risultato.ok, "errori": risultato.fail}
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
+

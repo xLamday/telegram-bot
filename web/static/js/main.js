@@ -1,11 +1,24 @@
 /* TelePanel — main.js */
 
+
 const API_BASE = 'http://127.0.0.1:8001';
 
 /* ── Sidebar toggle ─────────────────────────────────── */
 const sidebar   = document.getElementById('sidebar');
 const hamburger = document.getElementById('hamburger');
 const overlay   = document.getElementById('overlay');
+
+async function getSessionToken() {
+  try {
+    const res = await fetch("/api/session-token/");
+    if (!res.ok) throw new Error("Non è stato possibile recuperare il token");
+    const data = await res.json();
+    return data.access || null;  // restituisce il JWT oppure null
+  } catch (err) {
+    console.error("Errore nel recuperare il JWT dalla sessione:", err);
+    return null;
+  }
+}
 
 hamburger?.addEventListener('click', () => {
   const open = sidebar.classList.toggle('open');
@@ -49,30 +62,53 @@ function toast(msg, type = 'success') {
 }
 
 /* ── Bot status check ───────────────────────────────── */
-async function checkBotStatus() {
-  const dot   = document.getElementById('statusDot');
-  const label = document.getElementById('statusLabel');
+/* ── API health check ───────────────────────────────── */
+async function checkApiHealth() {
+  const dot   = document.getElementById("statusDot");
+  const label = document.getElementById("statusLabel");
   if (!dot || !label) return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+
   try {
-    const r = await fetch(`${API_BASE}/api/stats`, { signal: AbortSignal.timeout(3000) });
-    if (r.ok) {
-      dot.classList.add('online');
-      label.textContent = 'API online';
-    } else { throw new Error(); }
-  } catch {
-    dot.classList.remove('online');
-    label.textContent = 'API offline';
-    dot.classList.add('offline');
+    const res = await fetch(`${API_BASE}/api/health`, {
+      method: "GET",
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) throw new Error("API error");
+
+    const data = await res.json();
+
+    if (data.status === "ok") {
+      dot.classList.remove("offline");
+      dot.classList.add("online");
+      label.textContent = "API online";
+    } else {
+      throw new Error("API not healthy");
+    }
+
+  } catch (err) {
+    clearTimeout(timeout);
+
+    dot.classList.remove("online");
+    dot.classList.add("offline");
+    label.textContent = "API offline";
   }
 }
 
-checkBotStatus();
-setInterval(checkBotStatus, 15000);
+checkApiHealth();
+setInterval(checkApiHealth, 15000);
 
 /* ── Ban/unban utente ───────────────────────────────── */
 async function toggleBan(utenteId, btn) {
   try {
-    const r = await fetch(`${API_BASE}/api/utenti/${utenteId}/ban`, { method: 'PATCH' });
+    const r = await fetch(`${API_BASE}/api/utenti/${utenteId}/ban`, { method: 'PATCH', headers: {
+      "Authorization": `Bearer ${ACCESS_TOKEN}`
+    } });
     const data = await r.json();
     const active = data.attivo;
     btn.textContent = active ? 'Ban' : 'Unban';
@@ -92,7 +128,9 @@ async function toggleBan(utenteId, btn) {
 async function rimuoviCanale(chatId, btn) {
   if (!confirm('Rimuovere questo canale?')) return;
   try {
-    const r = await fetch(`${API_BASE}/api/canali/${chatId}`, { method: 'DELETE' });
+    const r = await fetch(`${API_BASE}/api/canali/${chatId}`, { method: 'DELETE', headers: {
+      "Authorization": `Bearer ${ACCESS_TOKEN}`
+    } });
     if (r.ok) {
       btn.closest('tr')?.remove();
       toast('Canale rimosso');
@@ -103,25 +141,39 @@ async function rimuoviCanale(chatId, btn) {
 }
 
 /* ── Broadcast ──────────────────────────────────────── */
-async function sendBroadcast(textarea, btn) {
-  const testo = textarea.value.trim();
-  if (!testo) { toast('Scrivi un messaggio', 'error'); return; }
-  btn.disabled = true;
-  btn.textContent = 'Invio…';
+async function sendBroadcast(textarea, button) {
+  const text = textarea.value.trim();
+  if (!text) return;
+
+  button.disabled = true;
+
+  const ACCESS_TOKEN = await getSessionToken();
+  if (!ACCESS_TOKEN) {
+    toast("Non sei autenticato. Ricarica la pagina.");
+    button.disabled = false;
+    return;
+  }
+
   try {
-    const r = await fetch(`${API_BASE}/api/broadcast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ testo }),
+    const res = await fetch(`${API_BASE}/api/broadcast`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${ACCESS_TOKEN}`
+      },
+      body: JSON.stringify({ testo: text })
     });
-    const data = await r.json();
+
+    if (!res.ok) throw new Error();
+
+    const data = await res.json();
     toast(`Inviato a ${data.inviato_a} canali ✓`);
-    textarea.value = '';
-  } catch {
-    toast('Errore broadcast', 'error');
+    textarea.value = "";
+  } catch (err) {
+    toast("X Errore durante il broadcast");
+    console.error(err);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Invia';
+    button.disabled = false;
   }
 }
 
