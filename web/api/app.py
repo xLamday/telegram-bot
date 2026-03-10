@@ -30,8 +30,18 @@ from sqlalchemy import desc
 from database.models import Base, Utente, Canale, Messaggio, LogEvento
 from database.session import SyncSessionLocal, init_db_sync
 from shared.config import bot_config, web_config
+from web.api.dependencies import jwt_required, admin_required
 
 # ---------------------------------------------------------------------------
+import logging
+
+# Forza uvicorn a stampare TUTTI i log inclusi quelli delle app
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
+)
+
 app = FastAPI(title="Telegram Bot — Web Panel API", version="1.0.0")
 
 app.add_middleware(
@@ -54,7 +64,6 @@ _bot: Bot | None = None
 async def startup():
     global _bot
     init_db_sync()
-    _seed_panel_admin()
     _bot = Bot(token=bot_config.TOKEN)
     await _bot.initialize()
     print(f"[STARTUP] Bot inizializzato: {_bot.token[:10]}...", flush=True)
@@ -75,31 +84,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-def _seed_panel_admin():
-    """Crea il primo admin panel se non ne esiste nessuno."""
-    try:
-        from database.models import PanelUser
-        from web.core.auth import hash_password
-        db = SyncSessionLocal()
-        try:
-            if db.query(PanelUser).filter_by(ruolo="admin").count() == 0:
-                admin_user = os.getenv("PANEL_ADMIN_USER", "admin")
-                admin_pass = os.getenv("PANEL_ADMIN_PASS", "admin1234")
-                db.add(PanelUser(
-                    username=admin_user,
-                    password_hash=hash_password(admin_pass),
-                    nome="Amministratore",
-                    ruolo="admin",
-                ))
-                db.commit()
-                print(f"[AUTH] Admin panel creato: {admin_user} / {admin_pass}")
-                print("[AUTH] Cambia la password dal pannello!")
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"[AUTH] Seed admin saltato: {e}")
 
 
 # Schemas
@@ -156,9 +140,79 @@ class BroadcastPayload(BaseModel):
     testo: str
 
 
-# Routes
+# ── Auth endpoints (pubblici, no JWT richiesto) ──────────────────────────────
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+class RefreshPayload(BaseModel):
+    refresh: str
+
+@app.post("/api/auth/token", tags=["auth"])
+def login(payload: LoginPayload):
+    import traceback, logging
+    log = logging.getLogger("api.auth")
+
+    try:
+        log.info("[AUTH] Ricevuta richiesta login per: %s", payload.username)
+
+        # STEP 1 — Django setup
+        import django
+        log.info("[AUTH] STEP 1 — django.setup()")
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web.core.settings")
+        if not django.apps.registry.apps.ready:
+            django.setup()
+        log.info("[AUTH] STEP 1 — apps.ready: %s", django.apps.registry.apps.ready)
+
+        # STEP 2 — import auth helpers
+        log.info("[AUTH] STEP 2 — import web.core.auth")
+        from web.core.auth import login_utente, genera_token_per_utente
+        log.info("[AUTH] STEP 2 — import ok")
+
+        # STEP 3 — authenticate
+        log.info("[AUTH] STEP 3 — authenticate()")
+        from django.test import RequestFactory
+        fake_request = RequestFactory().post("/")
+        user = login_utente(fake_request, payload.username, payload.password)
+        log.info("[AUTH] STEP 3 — user: %s", user)
+
+        if user is None:
+            log.warning("[AUTH] Credenziali non valide per: %s", payload.username)
+            raise HTTPException(status_code=401, detail="Credenziali non valide.")
+
+        # STEP 4 — genera token
+        log.info("[AUTH] STEP 4 — genera_token_per_utente()")
+        tokens = genera_token_per_utente(user)
+        log.info("[AUTH] STEP 4 — token generati ok")
+        return tokens
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        tb = traceback.format_exc()
+        # Stampa sempre, anche se il logger non è configurato
+        print(f"[AUTH] INTERNAL ERROR: {type(e).__name__}: {e}", flush=True)
+        print(tb, flush=True)
+        logging.getLogger("api.auth").error("[AUTH] INTERNAL ERROR\n%s", tb)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+
+
+@app.post("/api/auth/refresh", tags=["auth"])
+def token_refresh(payload: RefreshPayload):
+    """Rinnova l'access token dato un refresh token valido."""
+    from web.core.auth import refresh_access_token
+    from rest_framework_simplejwt.exceptions import InvalidToken
+    try:
+        return refresh_access_token(payload.refresh)
+    except InvalidToken as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+# ── Routes protette da JWT ────────────────────────────────────────────────────
+
 @app.get("/api/stats", response_model=StatsSchema)
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(db: Session = Depends(get_db), _user=Depends(jwt_required)):
     oggi = date.today()
     return StatsSchema(
         utenti_totali=db.query(Utente).count(),
@@ -169,18 +223,18 @@ def get_stats(db: Session = Depends(get_db)):
     )
 
 @app.get("/api/utenti", response_model=List[UtenteSchema])
-def get_utenti(db: Session = Depends(get_db)):
+def get_utenti(db: Session = Depends(get_db), _user=Depends(jwt_required)):
     return db.query(Utente).order_by(desc(Utente.creato_il)).all()
 
 @app.get("/api/utenti/{utente_id}", response_model=UtenteSchema)
-def get_utente(utente_id: int, db: Session = Depends(get_db)):
+def get_utente(utente_id: int, db: Session = Depends(get_db), _user=Depends(jwt_required)):
     u = db.query(Utente).filter_by(id=utente_id).first()
     if not u:
         raise HTTPException(404, "Utente non trovato")
     return u
 
 @app.patch("/api/utenti/{utente_id}/ban")
-def ban_utente(utente_id: int, db: Session = Depends(get_db)):
+def ban_utente(utente_id: int, db: Session = Depends(get_db), _user=Depends(admin_required)):
     u = db.query(Utente).filter_by(id=utente_id).first()
     if not u:
         raise HTTPException(404, "Utente non trovato")
@@ -189,14 +243,14 @@ def ban_utente(utente_id: int, db: Session = Depends(get_db)):
     return {"attivo": u.attivo}
 
 @app.get("/api/canali", response_model=List[CanaleSchema])
-def get_canali(solo_attivi: bool = False, db: Session = Depends(get_db)):
+def get_canali(solo_attivi: bool = False, db: Session = Depends(get_db), _user=Depends(jwt_required)):
     q = db.query(Canale)
     if solo_attivi:
         q = q.filter_by(attivo=True)
     return q.order_by(desc(Canale.registrato_il)).all()
 
 @app.delete("/api/canali/{telegram_id}")
-def rimuovi_canale(telegram_id: int, db: Session = Depends(get_db)):
+def rimuovi_canale(telegram_id: int, db: Session = Depends(get_db), _user=Depends(admin_required)):
     c = db.query(Canale).filter_by(telegram_id=telegram_id).first()
     if not c:
         raise HTTPException(404, "Canale non trovato")
@@ -205,15 +259,15 @@ def rimuovi_canale(telegram_id: int, db: Session = Depends(get_db)):
     return {"rimosso": True}
 
 @app.get("/api/messaggi", response_model=List[MessaggioSchema])
-def get_messaggi(limit: int = 50, db: Session = Depends(get_db)):
+def get_messaggi(limit: int = 50, db: Session = Depends(get_db), _user=Depends(jwt_required)):
     return db.query(Messaggio).order_by(desc(Messaggio.creato_il)).limit(limit).all()
 
 @app.get("/api/logs", response_model=List[LogSchema])
-def get_logs(limit: int = 100, db: Session = Depends(get_db)):
+def get_logs(limit: int = 100, db: Session = Depends(get_db), _user=Depends(jwt_required)):
     return db.query(LogEvento).order_by(desc(LogEvento.creato_il)).limit(limit).all()
 
 @app.post("/api/broadcast")
-async def broadcast(payload: BroadcastPayload):
+async def broadcast(payload: BroadcastPayload, _user=Depends(admin_required)):
     """
     Usa il Bot singleton inizializzato all'avvio — mai ricreato per ogni richiesta.
     Questo garantisce che la sessione HTTP sia già aperta e stabile.

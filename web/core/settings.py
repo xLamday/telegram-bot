@@ -24,12 +24,17 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sessions",
     "web.core",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    'rest_framework',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -55,14 +60,47 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "web.core.wsgi.application"
 
-# Sessioni file-based — nessun DB Django necessario
-SESSION_ENGINE       = "django.contrib.sessions.backends.file"
-SESSION_FILE_PATH    = ROOT / ".sessions"
-SESSION_COOKIE_AGE   = 60 * 60 * 8   # 8 ore
+# Sessioni DB-backed — richiesto da django.contrib.auth
+SESSION_ENGINE          = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE      = 60 * 60 * 8   # 8 ore
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE   = False          # True in produzione con HTTPS
 
-# Nessun DB Django — usiamo SQLAlchemy tramite database/session.py
-DATABASES = {}
+# DB Django — solo per auth, sessioni e admin. Il bot usa SQLAlchemy separato.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db_panel.sqlite3",
+    }
+}
+
+# Password validators Django
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+     "OPTIONS": {"min_length": 8}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+# SimpleJWT config
+from datetime import timedelta
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME":  timedelta(hours=8),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS":  True,
+    "ALGORITHM":              "HS256",
+    "SIGNING_KEY":            SECRET_KEY,
+}
+
+# DRF — usa JWT come autenticazione di default
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+}
 
 STATIC_URL       = "/static/"
 STATICFILES_DIRS = [ROOT / "web" / "static"]

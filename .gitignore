@@ -9,6 +9,10 @@ build/
 *.egg
 .eggs/
 
+#sessions
+*.sessions
+.sessions/
+
 # Virtual env
 venv/
 env/
