@@ -104,7 +104,16 @@ checkApiHealth();
 setInterval(checkApiHealth, 15000);
 
 /* ── Ban/unban utente ───────────────────────────────── */
-async function toggleBan(utenteId, btn) {
+async function toggleBan(btn) {
+  const utenteId = btn.dataset.userId;
+
+  const ACCESS_TOKEN = await getSessionToken();
+  if (!ACCESS_TOKEN) {
+    toast("Non sei autenticato. Ricarica la pagina.");
+    button.disabled = false;
+    return;
+  }
+
   try {
     const r = await fetch(`${API_BASE}/api/utenti/${utenteId}/ban`, { method: 'PATCH', headers: {
       "Authorization": `Bearer ${ACCESS_TOKEN}`

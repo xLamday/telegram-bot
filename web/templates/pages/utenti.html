@@ -41,7 +41,8 @@
           <td>
             <button
               class="btn {% if u.attivo %}btn-danger{% else %}btn-ghost{% endif %}"
-              onclick="toggleBan({{ u.id }}, this)"
+              data-user-id="{{ u.id }}"
+              onclick="toggleBan(this)"
             >
               {% if u.attivo %}Ban{% else %}Unban{% endif %}
             </button>
