@@ -6,9 +6,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from database.session import AsyncSessionLocal
 from database.repository import MessaggioRepository, UtenteRepository
-from shared.logger import get_logger
+from shared.logger import LoggerInfo
 
-logger = get_logger("bot.registrazione")
+logger = LoggerInfo(name="bot.registrazione").get_logger()
 
 
 async def messaggio_privato_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

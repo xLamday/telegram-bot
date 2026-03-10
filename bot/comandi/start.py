@@ -6,9 +6,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from database.session import AsyncSessionLocal
 from database.repository import UtenteRepository, LogEventoRepository
-from shared.logger import get_logger
+from shared.logger import LoggerInfo
 
-logger = get_logger("bot.start")
+logger = LoggerInfo(name="bot.start").get_logger()
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

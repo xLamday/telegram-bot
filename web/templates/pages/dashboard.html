@@ -77,10 +77,10 @@
               {{ m.inviato_il|slice:":16" }}
             </td>
             <td>
-              {% if m.successo %}
-                <span class="badge badge-green">✓ ok</span>
+              {% if m.pubblicato %}
+                <span class="badge badge-green">✓ inviato</span>
               {% else %}
-                <span class="badge badge-red">✗ err</span>
+                <span class="badge badge-red">✗ errore</span>
               {% endif %}
             </td>
           </tr>

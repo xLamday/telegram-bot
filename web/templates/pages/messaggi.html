@@ -24,7 +24,7 @@
           <td><span class="badge badge-purple">{{ m.tipo }}</span></td>
           <td style="max-width:400px;white-space:normal">{{ m.testo|default:"—"|truncatechars:120 }}</td>
           <td>
-            {% if m.successo %}
+            {% if m.pubblicato %}
               <span class="badge badge-green">✓ inviato</span>
             {% else %}
               <span class="badge badge-red">✗ errore</span>

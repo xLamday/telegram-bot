@@ -62,6 +62,7 @@ async function checkBotStatus() {
   } catch {
     dot.classList.remove('online');
     label.textContent = 'API offline';
+    dot.classList.add('offline');
   }
 }
 

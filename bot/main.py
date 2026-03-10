@@ -16,10 +16,10 @@ import requests
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ChatMemberHandler
 
 from shared.config import bot_config, web_config
-from shared.logger import get_logger
+from shared.logger import LoggerInfo
 from database.session import init_db_async
 
-logger = get_logger("bot")
+logger = LoggerInfo(name="main").get_logger()
 
 API_BASE = f"http://127.0.0.1:{web_config.FASTAPI_PORT}"
 

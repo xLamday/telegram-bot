@@ -6,10 +6,10 @@ from telegram import Update, ChatMemberUpdated
 from telegram.ext import ContextTypes
 from database.session import AsyncSessionLocal
 from database.repository import CanaleRepository, LogEventoRepository
-from shared.logger import get_logger
+from shared.logger import LoggerInfo
 from shared.config import BotConfig
 
-logger = get_logger("bot.canali")
+logger = LoggerInfo(name="bot.canali").get_logger()
 
 
 def _estrai_status_change(member: ChatMemberUpdated):
