@@ -1,42 +1,61 @@
-# 🤖 Telegram Bot — Web Panel
+# 🤖 Telegram Bot Web Panel
 
-Stack: **Django** (frontend/auth) + **FastAPI** (API layer) + **SQLite/PostgreSQL**
+Stack: **Python 3.10+** | **Django 4.2** | **FastAPI** | **SQLite/PostgreSQL** | **Tailwind CSS**
 
-## Struttura
+## 📁 Struttura
 
 ```
-telegram-panel/
-├── web_panel/              # Django app (UI, auth, dashboard)
-│   ├── templates/          # HTML templates
-│   ├── static/             # CSS, JS, assets
-│   ├── views.py
-│   ├── urls.py
-│   └── models.py
+telegram-bot-panel/
 │
-├── fastapi_api/            # FastAPI (REST API per il bot)
-│   ├── main.py
-│   ├── routes/
-│   │   ├── channels.py
-│   │   ├── messages.py
-│   │   └── stats.py
-│   └── schemas.py
+├── bot/                        # Logica bot Telegram (originale)
+│   ├── comandi/                # Handlers comandi (/start, /pubblica, ecc.)
+│   ├── funzioni/               # Utility bot
+│   ├── config/                 # Settings bot
+│   └── main.py                 # Entry point bot
 │
-├── bot_bridge/             # Bridge Django ↔ Bot Telegram
-│   └── client.py
+├── database/                   # Abstraction layer DB (condiviso)
+│   ├── models.py               # Modelli SQLAlchemy
+│   ├── repository.py           # Repository pattern (CRUD)
+│   ├── session.py              # Gestione sessioni DB
+│   └── migrations/             # Alembic migrations
 │
-├── manage.py
-├── settings.py
+├── web/
+│   ├── django_panel/           # App Django (frontend pannello)
+│   │   ├── views.py            # Views Django
+│   │   ├── urls.py             # URL routing
+│   │   ├── templates/          # HTML templates
+│   │   └── static/             # CSS / JS
+│   │
+│   └── fastapi_app/            # FastAPI (REST API)
+│       ├── main.py             # Entry point FastAPI
+│       ├── routers/            # Route handlers
+│       └── schemas/            # Pydantic schemas
+│
+├── shared/                     # Codice condiviso bot + web
+│   ├── config.py               # Configurazione globale
+│   └── logger.py               # Logger condiviso
+│
+├── manage.py                   # Django management
+├── django_settings.py          # Configurazione Django
 ├── requirements.txt
-└── run.sh
+├── start_bot.bat               # Avvia bot (Windows)
+├── start_web.bat               # Avvia web panel (Windows)
+└── start_all.bat               # Avvia tutto (Windows)
 ```
 
-## Avvio rapido
+## 🚀 Avvio rapido (Windows 11)
 
-```bash
+```bat
+# Installa dipendenze
 pip install -r requirements.txt
+
+# Inizializza database
 python manage.py migrate
-python manage.py createsuperuser
-# In due terminali separati:
-python manage.py runserver        # Django :8000
-uvicorn fastapi_api.main:app --port 8001 --reload  # FastAPI :8001
+
+# Avvia tutto
+start_all.bat
 ```
+
+- **Pannello Web**: http://localhost:8000
+- **API FastAPI**: http://localhost:8001
+- **API Docs**: http://localhost:8001/docs

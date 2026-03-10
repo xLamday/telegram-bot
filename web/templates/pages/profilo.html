@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Profilo — TelePanel{% endblock %}
+{% block heading %}Il mio profilo{% endblock %}
+{% block subheading %}Impostazioni account{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+
+  <!-- Info account -->
+  <div class="card" style="animation-delay:0s">
+    <div class="section-title">Informazioni account</div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:8px">
+      <div class="info-row">
+        <span class="info-label">Username</span>
+        <span class="info-value" style="font-family:var(--font-mono)">{{ current_user.username }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Nome</span>
+        <span class="info-value">{{ current_user.nome|default:"Non impostato" }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Ruolo</span>
+        <span class="badge {% if current_user.ruolo == 'admin' %}badge-yellow{% else %}badge-purple{% endif %}">
+          {{ current_user.ruolo }}
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Stato</span>
+        <span class="badge badge-green">attivo</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cambia password -->
+  <div class="card" style="animation-delay:.1s">
+    <div class="section-title">Cambia password</div>
+
+    {% if error %}
+    <div style="background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.3);border-radius:var(--radius);padding:12px 14px;font-family:var(--font-mono);font-size:12px;color:var(--red);margin-bottom:16px;">
+      ✕ {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div style="background:rgba(61,255,160,.08);border:1px solid rgba(61,255,160,.3);border-radius:var(--radius);padding:12px 14px;font-family:var(--font-mono);font-size:12px;color:var(--green);margin-bottom:16px;">
+      ✓ {{ success }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/profilo/password/" style="display:flex;flex-direction:column;gap:14px">
+      {% csrf_token %}
+
+      <div>
+        <div class="form-label-inline">Password attuale</div>
+        <input class="form-inline" style="width:100%" type="password" name="vecchia_password" placeholder="••••••••" required/>
+      </div>
+      <div>
+        <div class="form-label-inline">Nuova password</div>
+        <input class="form-inline" style="width:100%" type="password" name="nuova_password" placeholder="min 6 caratteri" required/>
+      </div>
+      <div>
+        <div class="form-label-inline">Conferma nuova password</div>
+        <input class="form-inline" style="width:100%" type="password" name="conferma_password" placeholder="ripeti la password" required/>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="width:fit-content">
+        Aggiorna password
+      </button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

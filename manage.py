@@ -1,19 +1,16 @@
 #!/usr/bin/env python
-"""Django management utility."""
-import os
+"""manage.py — Django management per il web panel."""
 import sys
+import os
+from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-def main():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
-    try:
-        from django.core.management import execute_from_command_line
-    except ImportError as exc:
-        raise ImportError(
-            "Django non trovato. Installa le dipendenze con: pip install -r requirements.txt"
-        ) from exc
-    execute_from_command_line(sys.argv)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web.core.settings")
 
+from django.core.management import execute_from_command_line
 
 if __name__ == "__main__":
-    main()
+    execute_from_command_line(sys.argv)

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Utenti — TelePanel{% endblock %}
+{% block heading %}Utenti{% endblock %}
+{% block subheading %}{{ utenti|length }} utenti registrati{% endblock %}
+
+{% block content %}
+<div class="card">
+  {% if utenti %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Telegram ID</th>
+          <th>Username</th>
+          <th>Nome</th>
+          <th>Stato</th>
+          <th>Admin</th>
+          <th>Registrato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in utenti %}
+        <tr>
+          <td style="font-family:var(--font-mono);color:var(--text-muted)">#{{ u.id }}</td>
+          <td style="font-family:var(--font-mono);font-size:12px">{{ u.telegram_id }}</td>
+          <td>{% if u.username %}<span style="color:var(--accent)">@{{ u.username }}</span>{% else %}—{% endif %}</td>
+          <td>{{ u.nome|default:"—" }}</td>
+          <td>
+            <span class="badge status-badge {% if u.attivo %}badge-green{% else %}badge-red{% endif %}">
+              {% if u.attivo %}attivo{% else %}bannato{% endif %}
+            </span>
+          </td>
+          <td>
+            {% if u.is_admin %}<span class="badge badge-yellow">admin</span>{% else %}—{% endif %}
+          </td>
+          <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+            {{ u.creato_il|slice:":10" }}
+          </td>
+          <td>
+            <button
+              class="btn {% if u.attivo %}btn-danger{% else %}btn-ghost{% endif %}"
+              onclick="toggleBan({{ u.id }}, this)"
+            >
+              {% if u.attivo %}Ban{% else %}Unban{% endif %}
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state">Nessun utente registrato ancora.</div>
+  {% endif %}
+</div>
+{% endblock %}

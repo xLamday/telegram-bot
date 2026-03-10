@@ -1,10 +1,38 @@
-# Environents
-.env
+# Python
 __pycache__/
-/funzioni/__pycache__
-*.pyc
-/comandi/__pycache__
-*.pyc
-/logs
-/database/database.db
-config/settings.py
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual env
+venv/
+env/
+.venv/
+
+# Environment
+.env
+
+# Django
+staticfiles/
+*.sqlite3
+db.sqlite3
+
+# Data & logs
+data/
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

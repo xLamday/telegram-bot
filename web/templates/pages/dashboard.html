@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — TelePanel{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block subheading %}Panoramica in tempo reale{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-ghost" onclick="location.reload()">↺ Aggiorna</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- STAT CARDS -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Utenti totali</div>
+    <div class="stat-value">{{ stats.utenti_totali|default:"—" }}</div>
+    <div class="stat-icon">◉</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Utenti attivi</div>
+    <div class="stat-value">{{ stats.utenti_attivi|default:"—" }}</div>
+    <div class="stat-icon">◎</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Canali attivi</div>
+    <div class="stat-value">{{ stats.canali_attivi|default:"—" }}</div>
+    <div class="stat-icon">◇</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Messaggi totali</div>
+    <div class="stat-value">{{ stats.messaggi_totali|default:"—" }}</div>
+    <div class="stat-icon">◆</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Messaggi oggi</div>
+    <div class="stat-value">{{ stats.messaggi_oggi|default:"—" }}</div>
+    <div class="stat-icon">⬡</div>
+  </div>
+</div>
+
+<!-- BROADCAST -->
+<div class="card" style="margin-bottom:20px; animation-delay:.1s">
+  <div class="section-title">Broadcast rapido</div>
+  <div class="broadcast-form">
+    <textarea id="broadcastText" placeholder="Scrivi un messaggio da inviare a tutti i canali…" rows="2"></textarea>
+    <button class="btn btn-primary" onclick="sendBroadcast(document.getElementById('broadcastText'), this)">
+      ↗ Invia
+    </button>
+  </div>
+</div>
+
+<!-- GRID: ultimi messaggi + log -->
+<div class="grid-2">
+
+  <div class="card" style="animation-delay:.2s">
+    <div class="section-title">Ultimi messaggi</div>
+    {% if messaggi %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Tipo</th>
+            <th>Testo</th>
+            <th>Ora</th>
+            <th>Esito</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in messaggi %}
+          <tr>
+            <td><span style="color:var(--text-muted);font-family:var(--font-mono)">#{{ m.id }}</span></td>
+            <td><span class="badge badge-purple">{{ m.tipo }}</span></td>
+            <td>{{ m.testo|default:"—"|truncatechars:40 }}</td>
+            <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+              {{ m.inviato_il|slice:":16" }}
+            </td>
+            <td>
+              {% if m.successo %}
+                <span class="badge badge-green">✓ ok</span>
+              {% else %}
+                <span class="badge badge-red">✗ err</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty-state">Nessun messaggio registrato</div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="animation-delay:.3s">
+    <div class="section-title">Log recenti</div>
+    {% if logs %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Livello</th><th>Sorgente</th><th>Messaggio</th></tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+          <tr class="log-row log-{{ l.livello|lower }}">
+            <td>
+              {% if l.livello == "ERROR" %}
+                <span class="badge badge-red">ERROR</span>
+              {% elif l.livello == "WARNING" %}
+                <span class="badge badge-yellow">WARN</span>
+              {% else %}
+                <span class="badge badge-purple">INFO</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--text-muted)">{{ l.sorgente|default:"—" }}</td>
+            <td>{{ l.messaggio|truncatechars:60 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty-state">Nessun log disponibile</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

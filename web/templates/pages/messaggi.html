@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Messaggi — TelePanel{% endblock %}
+{% block heading %}Messaggi{% endblock %}
+{% block subheading %}Storico completo dei messaggi inviati{% endblock %}
+
+{% block content %}
+<div class="card">
+  {% if messaggi %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Tipo</th>
+          <th>Testo</th>
+          <th>Esito</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in messaggi %}
+        <tr>
+          <td style="font-family:var(--font-mono);color:var(--text-muted)">#{{ m.id }}</td>
+          <td><span class="badge badge-purple">{{ m.tipo }}</span></td>
+          <td style="max-width:400px;white-space:normal">{{ m.testo|default:"—"|truncatechars:120 }}</td>
+          <td>
+            {% if m.successo %}
+              <span class="badge badge-green">✓ inviato</span>
+            {% else %}
+              <span class="badge badge-red">✗ errore</span>
+            {% endif %}
+          </td>
+          <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+            {{ m.inviato_il|slice:":16" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state">Nessun messaggio registrato.</div>
+  {% endif %}
+</div>
+{% endblock %}

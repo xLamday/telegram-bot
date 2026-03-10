@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Amministratori — TelePanel{% endblock %}
+{% block heading %}Amministratori{% endblock %}
+{% block subheading %}Gestione accessi al web panel{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-primary" onclick="toggleForm()">+ Nuovo utente</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Form crea utente -->
+<div class="card" id="createForm" style="margin-bottom:20px; {% if not form_open %}display:none;{% endif %} animation-delay:.05s">
+  <div class="section-title">Crea nuovo utente panel</div>
+
+  {% if error %}
+  <div style="background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.3);border-radius:var(--radius);padding:12px 14px;font-family:var(--font-mono);font-size:12px;color:var(--red);margin-bottom:16px;">
+    ✕ {{ error }}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/amministratori/crea/" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+    {% csrf_token %}
+    <div>
+      <div class="form-label-inline">Username</div>
+      <input class="form-inline" type="text" name="username" placeholder="username" required/>
+    </div>
+    <div>
+      <div class="form-label-inline">Password</div>
+      <input class="form-inline" type="password" name="password" placeholder="min 6 caratteri" required/>
+    </div>
+    <div>
+      <div class="form-label-inline">Nome</div>
+      <input class="form-inline" type="text" name="nome" placeholder="Nome (opz.)"/>
+    </div>
+    <div>
+      <div class="form-label-inline">Ruolo</div>
+      <select class="form-inline" name="ruolo">
+        <option value="viewer">viewer</option>
+        <option value="admin">admin</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Crea utente</button>
+    <button class="btn btn-ghost" type="button" onclick="toggleForm()">Annulla</button>
+  </form>
+</div>
+
+<!-- Tabella utenti panel -->
+<div class="card">
+  {% if panel_utenti %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Nome</th>
+          <th>Ruolo</th>
+          <th>Stato</th>
+          <th>Creato il</th>
+          <th>Ultimo login</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in panel_utenti %}
+        <tr>
+          <td>
+            <span style="font-family:var(--font-mono);font-size:13px">{{ u.username }}</span>
+            {% if u.id == current_user.id %}
+              <span class="badge badge-purple" style="margin-left:6px">tu</span>
+            {% endif %}
+          </td>
+          <td>{{ u.nome|default:"—" }}</td>
+          <td>
+            <span class="badge {% if u.ruolo == 'admin' %}badge-yellow{% else %}badge-purple{% endif %}">
+              {{ u.ruolo }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if u.attivo %}badge-green{% else %}badge-red{% endif %}">
+              {% if u.attivo %}attivo{% else %}disabilitato{% endif %}
+            </span>
+          </td>
+          <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">{{ u.creato_il }}</td>
+          <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">{{ u.ultimo_login }}</td>
+          <td>
+            {% if u.id != current_user.id %}
+            <div style="display:flex;gap:8px">
+              <form method="post" action="/amministratori/{{ u.id }}/toggle/" style="display:inline">
+                {% csrf_token %}
+                <button class="btn btn-ghost" type="submit" style="padding:6px 12px;font-size:12px">
+                  {% if u.attivo %}Disabilita{% else %}Abilita{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/amministratori/{{ u.id }}/elimina/"
+                    style="display:inline"
+                    onsubmit="return confirm('Eliminare {{ u.username }}?')">
+                {% csrf_token %}
+                <button class="btn btn-danger" type="submit" style="padding:6px 12px;font-size:12px">
+                  Elimina
+                </button>
+              </form>
+            </div>
+            {% else %}
+            <span style="color:var(--text-muted);font-size:12px;font-family:var(--font-mono)">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state">Nessun utente panel trovato.</div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleForm() {
+  const f = document.getElementById('createForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}
