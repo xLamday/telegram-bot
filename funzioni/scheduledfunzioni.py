@@ -267,10 +267,10 @@ class BotMonitor:
             await self._check_single_channel_admin(context, chat_id, title)
 
         except BadRequest as e:
-            await self._notify_admin_inaccessible_channel(
-                context, chat_id, title, type(e).__name__
-            )
-            self.logger.warning(f"⚠️ Impossibile controllare '{title}': {e}")
+            # await self._notify_admin_inaccessible_channel(
+            #     context, chat_id, title, type(e).__name__
+            # )
+            self.logger.warning(f"BadRequest su {chat_id}: {e!r}")
 
         except Forbidden:
             await self._notify_admin_forbidden_channel(context, chat_id, title)
