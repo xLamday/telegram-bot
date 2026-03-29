@@ -4,9 +4,11 @@ from typing import List, Tuple
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError, RetryAfter, Forbidden, BadRequest
+from utils import rate_limiter
+from utils.telegram_errors import TelegramErrorClassificatore as TEC
 from loggerinfo import LoggerInfo
 from config.settings import Settings
-from database.database import DatabaseManager
+from database.manager import DatabaseManager
 
 
 class ChannelManager:
@@ -81,7 +83,7 @@ class ChannelManager:
                 
                 # Ottieni i canali dal database
                 with DatabaseManager() as db:
-                    channels = db.fetch_all_channels()
+                    channels = db.channel.fetch_all_channels()
                 
                 if not channels:
                     await status_msg.edit_text(
@@ -296,7 +298,7 @@ class ChannelManager:
         old_forwarded_message_id = None
         try:
             with DatabaseManager() as db:
-                old_post = db.get_post_by_channel(chat_id)
+                old_post = db.post.get_post_by_channel(chat_id)
                 if old_post:
                     old_forwarded_message_id = old_post["forwarded_message_id"]
                     self.logger.debug(
@@ -345,17 +347,20 @@ class ChannelManager:
             
             try:
                 # Invia il nuovo messaggio
-                sent_message = await context.bot.copy_message(
-                    chat_id=int(chat_id),
-                    from_chat_id=message.chat_id,
-                    message_id=message.message_id,
-                    reply_markup=message.reply_markup
+                sent_message = await rate_limiter.execute(
+                    chat_id=chat_id,
+                    coro_factory=lambda: context.bot.copy_message(
+                        chat_id=int(chat_id),
+                        from_chat_id=message.chat_id,
+                        message_id=message.message_id,
+                        reply_markup=message.reply_markup,
+                    ),
                 )
                 
                 # Aggiorna il database con upsert
                 try:
                     with DatabaseManager() as db:
-                        db.upsert_post(
+                        db.post.upsert_post(
                             original_message_id=original_message_id,
                             channel_chat_id=chat_id,
                             forwarded_message_id=sent_message.message_id
@@ -384,7 +389,7 @@ class ChannelManager:
                     return result
                     
             except RetryAfter as e:
-                wait_time = e.retry_after + 2
+                wait_time = e.retry_after ** 2
                 
                 if attempt == self.max_retries:
                     result["error"] = f"Rate limit dopo {attempt} tentativi"
@@ -397,48 +402,37 @@ class ChannelManager:
                     f"⏳ Rate limit su {title}, attesa {wait_time}s "
                     f"(tentativo {attempt}/{self.max_retries})"
                 )
-                await asyncio.sleep(wait_time)
+                await asyncio.sleep(wait_time) ## Convertito in esponenziale
                 
-            except Forbidden as e:
-                # Bot rimosso o bannato dal canale
-                result["error"] = "Bot rimosso dal canale"
-                result["channel_removed"] = True
-                
-                await self._remove_channel_after_error(chat_id, title, context)
-                
-                self.logger.warning(
-                    f"⚠️ Accesso negato a {title} ({chat_id}): {e}"
-                )
-                break
-                
-            except BadRequest as e:
-                # Errore nella richiesta
-                error_msg = str(e).lower()
-                
-                if "chat not found" in error_msg or "channel" in error_msg:
-                    result["error"] = "Canale non trovato o eliminato"
+            except (BadRequest, Forbidden) as e:
+                # Check se la chat è raggiungibile attraverso utils
+                if TEC.è_chat_irraggiungibile(e):
+                    result["error"] = "Canale non trovato o bot rimosso"
                     result["channel_removed"] = True
+                    self.logger.warning(f"⚠️ Accesso negato a {title} ({chat_id}): {e}")
                     await self._remove_channel_after_error(chat_id, title, context)
                 else:
-                    result["error"] = f"Errore richiesta: {e}"
-                
-                self.logger.warning(
-                    f"⚠️ BadRequest per {title} ({chat_id}): {e}"
-                )
+                    result["error"] = f"BadRequest non classificata: {e}"
+                    self.logger.warning(f"⚠️ [{TEC.classifica(e)}] BadRequest per '{title}' ({chat_id}): {e}")
+
                 break
-                
+           
             except TelegramError as e:
+
+                if TEC.è_chat_irraggiungibile(e):
+                    result["error"] = "Canale non trovato o bot rimosso"
+                    result["channel_removed"] = True
+                    self.logger.warning(f"🚫 [{TEC.classifica(e)}] Chat irraggiungibile '{title}' ({chat_id}): {e}")
+                    await self._remove_channel_after_error(chat_id, title, context)
+                    break
+
                 if attempt == self.max_retries:
                     result["error"] = f"Errore Telegram: {e}"
-                    self.logger.error(
-                        f"❌ Errore persistente per {title}: {e}"
-                    )
+                    self.logger.error(f"❌ [{TEC.classifica(e)}] Errore persistente per '{title}' ({chat_id}): {e}")
                     break
                 
-                self.logger.warning(
-                    f"⚠️ Errore temporaneo per {title}, riprovo... "
-                    f"(tentativo {attempt}/{self.max_retries}): {e}"
-                )
+
+                self.logger.warning(f"⚠️ [{TEC.classifica(e)}] Errore temporaneo per '{title}', riprovo... "f"(tentativo {attempt}/{self.max_retries}): {e}")
                 await asyncio.sleep(2 ** attempt)  # Backoff esponenziale
                 
             except Exception as e:
@@ -455,7 +449,7 @@ class ChannelManager:
         """Rimuove un canale dal database dopo un errore di accesso."""
         try:
             with DatabaseManager() as db:
-                db.delete_channel(chat_id)
+                db.channel.delete_channel(chat_id)
             
             self.logger.info(f"🗑️ Canale {title} ({chat_id}) rimosso dal database")
             
@@ -472,7 +466,7 @@ class ChannelManager:
                     parse_mode="HTML"
                 )
             except TelegramError as e:
-                self.logger.error(f"Errore notifica admin rimozione: {e}")
+                self.logger.error(f"❌ [{TEC.classifica(e)}] Errore notifica admin rimozione: {e}")
                 
         except Exception as e:
             self.logger.error(

@@ -6,7 +6,8 @@ from loggerinfo import LoggerInfo
 from funzioni.system import ChannelManager
 from funzioni.scheduledfunzioni import BotMonitor
 from config.settings import Settings
-from database.database import DatabaseManager
+from database.manager import DatabaseManager
+from utils import rate_limiter
 
 class ComandiBot:
     """Gestisce tutti i comandi del bot Telegram."""
@@ -41,7 +42,7 @@ class ComandiBot:
         """Controlla se ci sono post duplicati nel database senza eliminarli."""
         try:
             with DatabaseManager() as db:
-                duplicati = db.get_duplicate_posts()
+                duplicati = db.post.get_duplicate_posts()
                 if not duplicati:
                     await update.message.reply_text("✅ Nessun post duplicato trovato.")
                     return
@@ -61,7 +62,7 @@ class ComandiBot:
         """Pulisce i post duplicati dal database."""
         try:
             with DatabaseManager() as db:
-                deleted_count = db.remove_duplicate_posts()
+                deleted_count = db.post.remove_duplicate_posts()
                 if deleted_count > 0:
                     await update.message.reply_text(f"✅ Rimossi {deleted_count} post duplicati.")
                 else:
@@ -96,6 +97,13 @@ class ComandiBot:
     async def check_canali(self, update: Update,context: ContextTypes.DEFAULT_TYPE):
         try:
             await self.botmonitor.check_post_eliminati(context)
+        except Exception as errore:
+            self.logger.info(f"Errore riscontrato: {errore}")
+
+    # ------------------ CHECK RATE ------------------
+    async def check_rate(self, update: Update,context: ContextTypes.DEFAULT_TYPE):
+        try:
+            await rate_limiter.log_stats(context)
         except Exception as errore:
             self.logger.info(f"Errore riscontrato: {errore}")
 

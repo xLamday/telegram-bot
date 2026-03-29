@@ -3,10 +3,11 @@ import sqlite3
 from typing import List, Tuple, Optional
 from database.connection import get_connection
 from loggerinfo import LoggerInfo
+from .manager import DatabaseManager as DatabaseManager
 
 
-class DatabaseManager:
-    """Gestione del DB SQLite (sincrono)."""
+class DatabaseManagerDeprecato:
+    """Gestione del DB SQLite (sincrono). (DEPRECATO V.2.2.3)"""
 
     def __init__(self):
         self.conn: Optional[sqlite3.Connection] = None

@@ -4,7 +4,7 @@ from telegram import ChatMemberUpdated
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError, BadRequest, Forbidden
 from loggerinfo import LoggerInfo
-from database.database import DatabaseManager
+from database.manager import DatabaseManager
 from config.settings import Settings
 from funzioni.system import ChannelManager
 
@@ -96,7 +96,7 @@ class RegistrazioneCanale:
         async with self.lock:
             try:
                 with DatabaseManager() as db:
-                    esiste = db.channel_exists(chat_id)
+                    esiste = db.channel.channel_exists(chat_id)
                     if esiste:
                         self.logger.info(f"Canale {chat_title} ({chat_id}) già registrato.")
                         return
@@ -112,7 +112,7 @@ class RegistrazioneCanale:
                     await self._notify_channel_registration(chat_id, context)
 
                     # Aggiunge il canale al DB
-                    db.add_channel(chat_id, chat_title)
+                    db.channel.add_channel(chat_id, chat_title)
 
                     # Notifica admin del successo
                     await self._notify_admin_registration(chat_id, chat_title, context)
@@ -131,7 +131,7 @@ class RegistrazioneCanale:
             try:
                 # Verifica se il canale esiste nel DB
                 with DatabaseManager() as db:
-                    if not db.channel_exists(chat_id):
+                    if not db.channel.channel_exists(chat_id):
                         self.logger.info(
                             f"ℹ️ Canale {chat_title} ({chat_id}) non presente nel DB, skip"
                         )
@@ -139,7 +139,7 @@ class RegistrazioneCanale:
 
                 # Rimuove il canale e i post associati
                 with DatabaseManager() as db:
-                    db.delete_channel(chat_id)
+                    db.channel.delete_channel(chat_id)
 
                 # Notifica admin
                 await self._notify_admin_removal(chat_id, chat_title, context)

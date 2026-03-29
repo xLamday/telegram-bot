@@ -1,4 +1,5 @@
 # bot_monitor.py
+from ast import Set
 import asyncio
 import re
 from typing import List, Tuple
@@ -7,7 +8,8 @@ from telegram.ext import ContextTypes
 from loggerinfo import LoggerInfo
 from funzioni.system import ChannelManager
 from config.settings import Settings
-from database.database import DatabaseManager
+from database.manager import DatabaseManager
+from utils import rate_limiter
 
 
 class BotMonitor:
@@ -48,7 +50,7 @@ class BotMonitor:
             
             try:
                 with DatabaseManager() as db:
-                    posts = db.fetch_all_posts()
+                    posts = db.post.fetch_all_posts()
                 
                 total_posts = len(posts)
                 self.logger.info(f"📊 Totale post da controllare: {total_posts}")
@@ -108,10 +110,14 @@ class BotMonitor:
     ):
         """Controlla un singolo post."""
         try:
-            await self._forward_message_safe(context, chat_id, msg_id)
+            await rate_limiter.execute(
+                chat_id=chat_id,
+                coro_factory=lambda: self._forward_message_safe(context, chat_id, msg_id),
+            )
             self.logger.debug(
                 f"✓ Messaggio {msg_id} da {title} verificato"
             )
+            
             
         except BadRequest as e:
             # Messaggio eliminato
@@ -123,16 +129,6 @@ class BotMonitor:
         except Forbidden:
             await self._notify_admin_forbidden_channel(context, chat_id, title)
             await self._remove_forbidden_channel(chat_id, msg_id)
-            
-        except RetryAfter as e:
-            # Gestione flood control globale
-            wait_time = e.retry_after + 2
-            self.logger.warning(
-                f"🚦 Flood control globale: attendo {wait_time}s"
-            )
-            await asyncio.sleep(wait_time)
-            # Riprova una volta
-            await self._check_single_post(context, chat_id, msg_id, title)
             
         except TelegramError as e:
             self.logger.error(
@@ -149,24 +145,16 @@ class BotMonitor:
         """Forward/copy message con retry in caso di RetryAfter o errori transitori."""
         for prova in range(1, tentativi + 1):
             try:
-                await context.bot.copy_message(
-                    chat_id=Settings.CANALE_CONTROLLO,
-                    from_chat_id=int(chat_id),
-                    message_id=msg_id
+                await rate_limiter.execute(
+                    chat_id=str(Settings.CANALE_CONTROLLO),
+                    coro_factory=lambda: context.bot.copy_message(
+                        chat_id=Settings.CANALE_CONTROLLO,
+                        from_chat_id=int(chat_id),
+                        message_id=msg_id,
+                    ),
                 )
                 return
-                
-            except RetryAfter as e:
-                attendi = e.retry_after + 1
-                if prova == tentativi:
-                    raise  # Rilancia l'eccezione all'ultimo tentativo
-                    
-                self.logger.warning(
-                    f"⏳ Rate limit. Tentativo {prova}/{tentativi}. "
-                    f"Attesa {attendi}s"
-                )
-                await asyncio.sleep(attendi)
-                
+ 
             except (BadRequest, Forbidden):
                 # Non ha senso ritentare per questi errori
                 raise
@@ -190,7 +178,7 @@ class BotMonitor:
             self.logger.info("🔐 Avvio controllo permessi admin...")
             
             with DatabaseManager() as db:
-                channels = db.fetch_all_channels()
+                channels = db.channel.fetch_all_channels()
             
             total_channels = len(channels)
             self.logger.info(f"📊 Totale canali da controllare: {total_channels}")
@@ -251,7 +239,10 @@ class BotMonitor:
         """Fallback check per quando il bot era offline. Soggetto a cache Telegram."""
         bot_id = context.application.bot_data["bot_id"]
         try:
-            admins = await context.bot.get_chat_administrators(int(chat_id))
+            admins = await rate_limiter.execute(
+                chat_id=chat_id,
+                coro_factory=lambda: context.bot.get_chat_administrators(int(chat_id)),
+            )
             admin_ids = {a.user.id for a in admins}
 
             if bot_id not in admin_ids:
@@ -260,17 +251,11 @@ class BotMonitor:
             else:
                 self.logger.info(f"✅ [FALLBACK] Bot admin su '{title}'")
 
-        except RetryAfter as e:
-            wait_time = e.retry_after + 2
-            self.logger.warning(f"🚦 Rate limit su '{title}': attesa {wait_time}s")
-            await asyncio.sleep(wait_time)
-            await self._check_single_channel_admin(context, chat_id, title)
-
         except BadRequest as e:
-            # await self._notify_admin_inaccessible_channel(
-            #     context, chat_id, title, type(e).__name__
-            # )
-            self.logger.warning(f"BadRequest su {chat_id}: {e!r}")
+            await self._notify_admin_inaccessible_channel(
+                context, chat_id, title, type(e).__name__
+            )
+            self.logger.warning(f"⚠️ Impossibile controllare '{title}': {e}")
 
         except Forbidden:
             await self._notify_admin_forbidden_channel(context, chat_id, title)
@@ -343,7 +328,7 @@ class BotMonitor:
         """Rimuove un canale non accessibile dal database."""
         try:
             with DatabaseManager() as db:
-                db.delete_channel(chat_id)
+                db.channel.delete_channel(chat_id)
             self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database")
         except Exception as e:
             self.logger.error(f"Errore rimozione canale {chat_id}: {e}")

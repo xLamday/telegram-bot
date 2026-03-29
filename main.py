@@ -25,6 +25,7 @@ from comandi.cmd import ComandiBot
 from funzioni.registra import RegistrazioneCanale
 from funzioni.system import ChannelManager
 from funzioni.scheduledfunzioni import BotMonitor
+from utils import rate_limiter
 
 logger = LoggerInfo(name="main").get_logger()
 
@@ -63,7 +64,13 @@ def main():
     channel_manager.set_cmd_handler(bot_commands)
 
     # Crea l'applicazione
-    app = ApplicationBuilder().token(Settings.TELEGRAM_TOKEN).post_init(on_startup).build()
+    app = (
+        ApplicationBuilder()
+        .token(Settings.TELEGRAM_TOKEN)
+        .post_init(on_startup)
+        .post_shutdown(on_shutdown)
+        .build()
+    )
     job_queue = app.job_queue
 
     # === HANDLER COMANDI ===
@@ -75,6 +82,8 @@ def main():
     app.add_handler(CommandHandler("pubblica", bot_commands.cmd_pubblica, filters.User(Settings.ADMIN_ID)))
     # /check_canali
     app.add_handler(CommandHandler("check_canali", bot_commands.check_canali, filters.User(Settings.ADMIN_ID)))
+    # /check_rate
+    app.add_handler(CommandHandler("check_rate", bot_commands.check_rate, filters.User(Settings.ADMIN_ID)))
     # /pulisci_duplicati
     app.add_handler(CommandHandler("pulisci_duplicati", bot_commands.pulisci_duplicati, filters.User(Settings.ADMIN_ID)))
     # /check_duplicati
@@ -104,6 +113,7 @@ def main():
         job_queue.run_once(bot_monitor.check_bot_admin, when=10)
         job_queue.run_repeating(bot_monitor.check_bot_admin, interval=3600)
         job_queue.run_repeating(bot_monitor.check_post_eliminati, interval=60)
+        job_queue.run_repeating(rate_limiter.log_stats, interval=1200)
         logger.info("Job periodici avviati con successo.")
     except Exception as e:
         logger.warning(f"Errore nell’avvio dei job periodici: {e}")
@@ -114,21 +124,26 @@ def main():
     # === AVVIO POLLING ===
     logger.info("🚀 Avvio del bot...")
     try:
-        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True,)
         # all'avvio
     except (KeyboardInterrupt, SystemExit):
         logger.info("🛑 Arresto del bot richiesto dall’utente.")
+        asyncio.run(rate_limiter.stop())
     except Exception as e:
         logger.critical(f"Errore critico durante run_polling(): {e}")
 
 async def on_startup(app):
     bot = await app.bot.get_me()
     app.bot_data["bot_id"] = bot.id
-    
+    rate_limiter.start()
     logger.info(f"🤖 Bot avviato correttamente")
     logger.info(f"🆔 ID BOT: {bot.id}")
     logger.info(f"👤 Username: @{bot.username}")
-    logger.info(f"🆚 Versione del bot: 2.2.3")
+    logger.info(f"🆚 Versione del bot: 2.3.0")
+
+async def on_shutdown(app):
+    await rate_limiter.stop()
+    logger.info(f"🤖 Bot spento correttamente")
 
 if __name__ == "__main__":
     main()
