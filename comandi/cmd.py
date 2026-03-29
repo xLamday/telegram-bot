@@ -32,6 +32,7 @@ class ComandiBot:
             "➡️ /rimuovi <link o ID> per rimuovere un canale.\n"
             "➡️ /pubblica per inoltrare un messaggio a tutti i canali privati registrati.\n"
             "➡️ /check_duplicati per controllare se ci sono post duplicati nel database.\n"
+            "➡️ /check_rate per controllare le statistiche su log del RateLimiter.\n"
             "➡️ /pulisci_duplicati per rimuovere i post duplicati dal database.\n"
             "➡️ /check_canali per controllare se i canali privati sono registrati e se i post sono stati inoltrati correttamente."
         )
