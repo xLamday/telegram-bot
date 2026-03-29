@@ -24,35 +24,58 @@ telegram-bot/
 ├── README.md
 │
 ├── config/
+│   ├── __init__.py
 │   └── settings.py
 │
 ├── comandi/
-│   ├── start.py
-│   ├── pubblica.py
-│   ├── rimuovi.py
-│   └── check_canali.py
+│   └── cmd.py
 │
 ├── funzioni/
-│   ├── registrazione.py
-│   ├── gestione_canali.py
+│   ├── registra.py
+│   ├── scheduledfunzioni.py
 │   └── system.py
 │
+│
+├── utils/
+│   ├── __init__.py
+│   ├── rate_limiter.py
+│   └── telegram_errors.py
+│
 └── database/
-    ├── db.py
-    └── setup.py
+    ├── __init__.py
+    ├── base.py
+    ├── manager.py
+    ├── post_db.py
+    ├── channel_db.py
+    ├── database.py
+    └── connection.py
 ```
 
 ---
 
 ## 🚀 Caratteristiche
 
-✔️ Gestione comandi personalizzati  
-✔️ Pubblicazione messaggi su canali Telegram  
-✔️ Inoltro messaggi da chat privata a canali  
-✔️ Rimozione e gestione canali registrati  
-✔️ Monitoraggio periodico dello stato del bot  
-✔️ Logging strutturato degli eventi  
-✔️ Gestione automatica dell'aggiunta/rimozione del bot dai canali  
+✔️Layer database in un package modulare:
+- Package database con i moduli manager, base, channel_db e post_db
+- Implementa il nuovo DatabaseManager con API .channel e .post
+
+✔️ Gestione comandi personalizzati
+
+✔️ Pubblicazione messaggi su canali Telegram
+
+✔️ Inoltro messaggi da chat privata a canali
+
+✔️ Rimozione e gestione canali registrati
+
+✔️ Monitoraggio periodico dello stato del bot
+
+✔️ Logging strutturato degli eventi
+
+✔️ Gestione automatica dell'aggiunta/rimozione del bot dai canali
+
+✔️ RateLimiter asincrono (utils.rate_limiter) con attese preventive, gestione RetryAfter e statistiche
+
+✔️ TelegramErrorClassificatore (utils.telegram_errors) per la classificazione strutturata degli errori Telegram
 
 ---
 
