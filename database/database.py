@@ -51,7 +51,7 @@ class DatabaseManagerDeprecato:
         """
         try:
             self.cursor.execute(
-                "DELETE FROM posts WHERE channel_chat_id=? AND forwarded_message_id=?",
+                "DELETE FROM posts WHERE channel_chat_id=%s AND forwarded_message_id=%s",
                 (channel_chat_id, forwarded_message_id)
             )
             self.conn.commit()
@@ -63,7 +63,7 @@ class DatabaseManagerDeprecato:
 
     def count_posts(self, channel_chat_id: int) -> int:
         self.cursor.execute(
-            "SELECT COUNT(*) FROM posts WHERE channel_chat_id=?", (channel_chat_id,)
+            "SELECT COUNT(*) FROM posts WHERE channel_chat_id=%s", (channel_chat_id,)
         )
         result = self.cursor.fetchone()
         return result[0] if result else 0
@@ -80,7 +80,7 @@ class DatabaseManagerDeprecato:
         """
         try:
             self.cursor.execute(
-                "SELECT original_message_id, forwarded_message_id FROM posts WHERE channel_chat_id = ?",
+                "SELECT original_message_id, forwarded_message_id FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             row = self.cursor.fetchone()
@@ -162,7 +162,7 @@ class DatabaseManagerDeprecato:
 
     def post_exists(self, channel_chat_id: int, forwarded_message_id: int) -> bool:
         self.cursor.execute(
-            "SELECT 1 FROM posts WHERE channel_chat_id=? AND forwarded_message_id=? LIMIT 1",
+            "SELECT 1 FROM posts WHERE channel_chat_id=%s AND forwarded_message_id=%s LIMIT 1",
             (channel_chat_id, forwarded_message_id)
         )
         return self.cursor.fetchone() is not None
@@ -181,7 +181,7 @@ class DatabaseManagerDeprecato:
         try:
             # Prima elimina eventuali post precedenti per questo canale
             self.cursor.execute(
-                "DELETE FROM posts WHERE channel_chat_id = ?",
+                "DELETE FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             
@@ -189,7 +189,7 @@ class DatabaseManagerDeprecato:
             self.cursor.execute(
                 """
                 INSERT INTO posts (original_message_id, channel_chat_id, forwarded_message_id)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
                 """,
                 (original_message_id, channel_chat_id, forwarded_message_id)
             )
@@ -216,7 +216,7 @@ class DatabaseManagerDeprecato:
         """
         try:
             self.cursor.execute(
-                "DELETE FROM posts WHERE channel_chat_id = ?",
+                "DELETE FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             deleted_count = self.cursor.rowcount
@@ -235,8 +235,8 @@ class DatabaseManagerDeprecato:
 
     def delete_channel(self, chat_id: int):
         try:
-            self.cursor.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
-            self.cursor.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            self.cursor.execute("DELETE FROM posts WHERE channel_chat_id=%s", (chat_id,))
+            self.cursor.execute("DELETE FROM channels WHERE chat_id=%s", (chat_id,))
             self.conn.commit()
             self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
         except sqlite3.Error as e:
@@ -258,7 +258,7 @@ class DatabaseManagerDeprecato:
                 booleano con 'True' se completato con successo, oppure False se non trovato o errore
         """
         try:
-            self.cursor.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            self.cursor.execute("DELETE FROM channels WHERE chat_id=%s", (chat_id,))
             self.conn.commit()
             self.logger.info(f"Canale {chat_id} è stato rimosso dal database")
             return True
@@ -267,14 +267,14 @@ class DatabaseManagerDeprecato:
             return False
 
     def channel_exists(self, chat_id: int) -> bool:
-        self.cursor.execute("SELECT 1 FROM channels WHERE chat_id=? LIMIT 1", (chat_id,))
+        self.cursor.execute("SELECT 1 FROM channels WHERE chat_id=%s LIMIT 1", (chat_id,))
         return self.cursor.fetchone() is not None
 
     # ------------------- UTILITY -------------------
     def add_channel(self, chat_id: int, title: str):
         if not self.channel_exists(chat_id):
             self.cursor.execute(
-                "INSERT INTO channels (chat_id, title) VALUES (?, ?)",
+                "INSERT INTO channels (chat_id, title) VALUES (%s, %s)",
                 (chat_id, title)
             )
             self.conn.commit()

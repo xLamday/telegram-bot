@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional
 import json
 from .base import BaseDatabase
-import sqlite3
+import psycopg2
 from loggerinfo import LoggerInfo
 
 
@@ -16,10 +16,10 @@ class ChannelDatabase(BaseDatabase):
 
     def delete_channel(self, chat_id: int):
         try:
-            self._execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
-            self._execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            self._execute("DELETE FROM posts WHERE channel_chat_id=%s", (chat_id,))
+            self._execute("DELETE FROM channels WHERE chat_id=%s", (chat_id,))
             self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore eliminazione canale {chat_id}: {e}")
             return False
 
@@ -38,23 +38,23 @@ class ChannelDatabase(BaseDatabase):
                 booleano con 'True' se completato con successo, oppure False se non trovato o errore
         """
         try:
-            self._execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            self._execute("DELETE FROM channels WHERE chat_id=%s", (chat_id,))
             self.logger.info(f"Canale {chat_id} è stato rimosso dal database")
             return True
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore eliminazione canale {chat_id}: {e}")
             return False
 
     def channel_exists(self, chat_id: int) -> bool:
         return self._fetch_one(
-            "SELECT 1 FROM channels WHERE chat_id=? LIMIT 1", (chat_id,)
+            "SELECT 1 FROM channels WHERE chat_id=%s LIMIT 1", (chat_id,)
         ) is not None
 
     # ------------------- UTILITY -------------------
     def add_channel(self, chat_id: int, title: str):
         if not self.channel_exists(chat_id):
             self._execute(
-                "INSERT INTO channels (chat_id, title) VALUES (?, ?)",
+                "INSERT INTO channels (chat_id, title) VALUES (%s, %s)",
                 (chat_id, title)
             )
             self.logger.info(f"Nuovo canale aggiunto: {chat_id} - {title}")

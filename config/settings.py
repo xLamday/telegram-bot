@@ -9,12 +9,12 @@ load_dotenv()
 class Settings:
     """Bot settings."""
     
-    TELEGRAM_TOKEN = "8477419835:AAE1mVmAc9TQ6T8lQ0itd3DRInLTtRAyv3g"
-    ADMIN_ID = 961492841
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+    ADMIN_ID = int(os.getenv("ADMIN_ID"))
     DATABASE_PATH = os.getenv('DATABASE_PATH', 'database/database.db')
-    CANALE_CONTROLLO = -1002900201712
+    CANALE_CONTROLLO = os.getenv("CANALE_CONTROLLO")
     controllo_canali_attivo = False
     processo_invio = False
     invio = False
-    CODE_VALIDITY = 10 * 60 # TEMPO DI VALIDITA' DEL CODICE (10 * 60 = 10 MINUTI)
-    DELAY = 5
+    CODE_VALIDITY = os.getenv("CODE_VALIDITY")
+    DELAY = os.getenv("DELAY")

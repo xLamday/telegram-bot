@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional
 import json
 from .base import BaseDatabase
-import sqlite3
+import psycopg2
 from loggerinfo import LoggerInfo
 
 
@@ -32,18 +32,18 @@ class PostDatabase(BaseDatabase):
         """
         try:
             self._execute(
-                "DELETE FROM posts WHERE channel_chat_id=? AND forwarded_message_id=?",
+                "DELETE FROM posts WHERE channel_chat_id=%s AND forwarded_message_id=%s",
                 (channel_chat_id, forwarded_message_id)
             )
             self.logger.info(f"Post {forwarded_message_id} rimosso dal canale {channel_chat_id}")
             return True
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore eliminazione post per canale {channel_chat_id}: {e}")
             return False
 
     def count_posts(self, channel_chat_id: int) -> int:
         result = self._fetch_one(
-            "SELECT COUNT(*) FROM posts WHERE channel_chat_id=?", (channel_chat_id,)
+            "SELECT COUNT(*) FROM posts WHERE channel_chat_id=%s", (channel_chat_id,)
         )
         return result[0] if result else 0
 
@@ -59,7 +59,7 @@ class PostDatabase(BaseDatabase):
         """
         try:
             row = self._fetch_one(
-                "SELECT original_message_id, forwarded_message_id FROM posts WHERE channel_chat_id = ?",
+                "SELECT original_message_id, forwarded_message_id FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             
@@ -70,7 +70,7 @@ class PostDatabase(BaseDatabase):
                 }
             return None
             
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore recupero post per canale {channel_chat_id}: {e}")
             return None
 
@@ -83,13 +83,13 @@ class PostDatabase(BaseDatabase):
         """
         try:
             return self._fetch_all("""
-                SELECT p.channel_chat_id, COUNT(*) as count, c.title
-                FROM posts p
-                LEFT JOIN channels c ON p.channel_chat_id = c.chat_id
-                GROUP BY p.channel_chat_id
-                HAVING COUNT(*) > 1
+            SELECT p.channel_chat_id, COUNT(*) as count, MAX(c.title) as title
+            FROM posts p
+            LEFT JOIN channels c ON p.channel_chat_id = c.chat_id
+            GROUP BY p.channel_chat_id
+            HAVING COUNT(*) > 1
             """)
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore recupero duplicati: {e}")
             return []
 
@@ -102,13 +102,7 @@ class PostDatabase(BaseDatabase):
         """
         try:
             # Trova i canali con duplicati prima di eliminarli
-            duplicati = self._fetch_all("""
-                SELECT p.channel_chat_id, COUNT(*) as count, c.title
-                FROM posts p
-                LEFT JOIN channels c ON p.channel_chat_id = c.chat_id
-                GROUP BY p.channel_chat_id
-                HAVING COUNT(*) > 1
-            """)
+            duplicati = self.get_duplicate_posts()
             
             if not duplicati:
                 self.logger.info("Nessun post duplicato trovato")
@@ -118,26 +112,31 @@ class PostDatabase(BaseDatabase):
                 nome = title if title else channel_chat_id
                 self.logger.info(f"Canale con titolo '{nome}' ha {count} post duplicati, verrà mantenuto solo il più recente")
 
-            # Elimina i duplicati
-            self.cursor.execute("""
-                DELETE FROM posts
-                WHERE id NOT IN (
-                    SELECT MAX(id)
+    # Usa CTE con ROW_NUMBER() per eliminare tutti tranne l'id più grande
+            self._execute("""
+                WITH ranked_posts AS (
+                    SELECT id,
+                        ROW_NUMBER() OVER (PARTITION BY channel_chat_id ORDER BY id DESC) as rn
                     FROM posts
-                    GROUP BY channel_chat_id
+                )
+                DELETE FROM posts
+                WHERE id IN (
+                    SELECT id
+                    FROM ranked_posts
+                    WHERE rn > 1
                 )
             """)
             deleted_count = self.cursor.rowcount
             self.logger.info(f"Rimossi {deleted_count} post duplicati in totale")
             return deleted_count
         
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore rimozione duplicati: {e}")
             return 0
 
     def post_exists(self, channel_chat_id: int, forwarded_message_id: int) -> bool:
         return self._fetch_one(
-            "SELECT 1 FROM posts WHERE channel_chat_id=? AND forwarded_message_id=? LIMIT 1",
+            "SELECT 1 FROM posts WHERE channel_chat_id=%s AND forwarded_message_id=%s LIMIT 1",
             (channel_chat_id, forwarded_message_id)
         ) is not None
     
@@ -155,7 +154,7 @@ class PostDatabase(BaseDatabase):
         try:
             # Prima elimina eventuali post precedenti per questo canale
             self._execute(
-                "DELETE FROM posts WHERE channel_chat_id = ?",
+                "DELETE FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             
@@ -163,7 +162,7 @@ class PostDatabase(BaseDatabase):
             self._execute(
                 """
                 INSERT INTO posts (original_message_id, channel_chat_id, forwarded_message_id)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
                 """,
                 (original_message_id, channel_chat_id, forwarded_message_id)
             )
@@ -173,7 +172,7 @@ class PostDatabase(BaseDatabase):
                 f"original={original_message_id}, forwarded={forwarded_message_id}"
             )
             
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore upsert post: {e}")
             raise
 
@@ -189,13 +188,13 @@ class PostDatabase(BaseDatabase):
         """
         try:
             self._execute(
-                "DELETE FROM posts WHERE channel_chat_id = ?",
+                "DELETE FROM posts WHERE channel_chat_id = %s",
                 (channel_chat_id,)
             )
             deleted_count = self.cursor.rowcount
             self.logger.debug(f"Eliminati {deleted_count} post per canale {channel_chat_id}")
             return deleted_count
             
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Errore eliminazione post per canale {channel_chat_id}: {e}")
             return 0

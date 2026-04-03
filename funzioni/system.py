@@ -1,6 +1,7 @@
 # funzioni/system.py
 import asyncio
-from typing import List, Tuple
+from optparse import Option
+from typing import List, Optional, Tuple
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError, RetryAfter, Forbidden, BadRequest
@@ -445,7 +446,7 @@ class ChannelManager:
         
         return result
     
-    async def _remove_channel_after_error(self,chat_id: str,title: str,context: ContextTypes.DEFAULT_TYPE):
+    async def _remove_channel_after_error(self, chat_id: str, title: Optional[str] = None, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> None:
         """Rimuove un canale dal database dopo un errore di accesso."""
         try:
             with DatabaseManager() as db:

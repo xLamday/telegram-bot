@@ -1,35 +1,48 @@
 """
-Database connection management.
+PostgreSQL database connection management.
 """
-import sqlite3
-from config.settings import Settings
 
+import psycopg2
+from config.db_config import DatabaseConfig
+from loggerinfo import LoggerInfo
+
+logger = LoggerInfo(name="DB").get_logger()
 def get_connection():
-    """Get a database connection."""
-    return sqlite3.connect(Settings.DATABASE_PATH)
+    """Get PostgreSQL connection."""
+    return psycopg2.connect(
+        host=DatabaseConfig.HOST,
+        port=DatabaseConfig.PORT,
+        dbname=DatabaseConfig.NAME,
+        user=DatabaseConfig.USER,
+        password=DatabaseConfig.PASSWORD
+    )
 
-    
+
 def setup_database():
-    """Crea tutte le tabelle necessarie per il bot."""
+    """Crea  tutte le tabelle richieste per il bot se non esistono"""
     conn = get_connection()
     cursor = conn.cursor()
-
+    logger.info(f"[Postgres-SQL] Connessione al database inizializzata!")
     tables = [
-        # Tabella dei canali
+
+        # Channels table
         """
         CREATE TABLE IF NOT EXISTS channels (
-            chat_id INTEGER PRIMARY KEY,
+            chat_id BIGINT PRIMARY KEY,
             title TEXT
         )
         """,
-        # Tabella dei post pubblicati
+
+        # Posts table
         """
         CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            original_message_id INTEGER NOT NULL,
-            channel_chat_id INTEGER NOT NULL,
-            forwarded_message_id INTEGER NOT NULL,
-            FOREIGN KEY(channel_chat_id) REFERENCES channels(chat_id) ON DELETE CASCADE,
+            id SERIAL PRIMARY KEY,
+            original_message_id BIGINT NOT NULL,
+            channel_chat_id BIGINT NOT NULL,
+            forwarded_message_id BIGINT NOT NULL,
+            FOREIGN KEY(channel_chat_id)
+                REFERENCES channels(chat_id)
+                ON DELETE CASCADE,
             UNIQUE(channel_chat_id, forwarded_message_id)
         )
         """
@@ -38,19 +51,6 @@ def setup_database():
     for table_query in tables:
         cursor.execute(table_query)
 
-    # # Gestione migrazioni future (esempio: aggiunta colonne)
-    # try:
-    #     # Controlla se esistono colonne aggiuntive nella tabella channels
-    #     cursor.execute("PRAGMA table_info(channels)")
-    #     columns = [column[1] for column in cursor.fetchall()]
-    #     if 'created_at' not in columns:
-    #         cursor.execute("ALTER TABLE channels ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    #         logging.info("Aggiunto created_at column to channels table")
-    #     if 'updated_at' not in columns:
-    #         cursor.execute("ALTER TABLE channels ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    #         logging.info("Aggiunto updated_at column to channels table")
-    # except Exception as e:
-    #     logging.warning(f"Migration error (non-critical): {e}")
-
     conn.commit()
+    cursor.close()
     conn.close()

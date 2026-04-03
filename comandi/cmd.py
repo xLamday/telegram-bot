@@ -81,7 +81,15 @@ class ComandiBot:
 
         raw = context.args[0].strip()
 
-        success = self.system.remove_channel(raw)
+        try:
+            with DatabaseManager() as db:
+                esiste = db.channel.channel_exists(int(raw))
+                if esiste:
+                    self.logger.info(f"Canale con ID: {raw} esiste")
+        except Exception as errore:
+            print(f"Errore non gestito: {errore}")
+
+        success = await self.system._remove_channel_after_error(str(raw), context=context)
         if success:
             # Prova a notificare il canale rimosso
             try:
@@ -90,8 +98,6 @@ class ComandiBot:
             except Exception:
                 self.logger.warning(f"Impossibile inviare messaggio di rimozione al canale {raw}")
             await update.message.reply_text(f"✅ Canale e post associati rimossi: {raw}")
-        else:
-            await update.message.reply_text("⚠️ Questo canale non è presente nel database.")
 
 
     # ------------------ CHECK CANALE ------------------

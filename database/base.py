@@ -24,20 +24,15 @@ class BaseDatabase:
             self.conn.close()
         self.cursor = None
     
-    def _execute(self, query: str, params: tuple = ()) -> bool:
+    def _execute(self, query, params=None) -> bool:
         """Execute a query and return success status."""
         if not self.conn:
             logger.error("Database connection is None in _execute")
             return False
         
-        try:
-            self.cursor = self.conn.cursor()
-            self.cursor.execute(query, params)
-            self.conn.commit()
-            return True
-        except sqlite3.Error as e:
-            logger.error(f"Database error in _execute: {e}")
-            return False
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(query, params or ())
+        return self.cursor
     
     def _fetch_one(self, query: str, params: tuple = ()):
         """Fetch one row from query."""

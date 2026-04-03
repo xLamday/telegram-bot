@@ -120,11 +120,10 @@ class BotMonitor:
             
             
         except BadRequest as e:
-            # Messaggio eliminato
-            await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
-            self.logger.info(
-                f"⚠️ Possibile post eliminato in {chat_id}, {title}"
-            )
+                await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
+                self.logger.info(
+                    f"⚠️ Possibile post eliminato in {chat_id}, {title}"
+                )
             
         except Forbidden:
             await self._notify_admin_forbidden_channel(context, chat_id, title)
