@@ -41,12 +41,13 @@ class RegistrazioneCanale:
         old_status = cm.old_chat_member.status
         new_status = cm.new_chat_member.status
 
-        with DatabaseManager() as db:
-            esiste = db.channel.channel_exists(chat_id)
 
         # Determina l'azione da eseguire
         is_promoted = await self._is_promoted(old_status, new_status)
         is_removed = await self._is_removed(old_status, new_status)
+
+        with DatabaseManager() as db:
+            esiste = db.channel.channel_exists(chat_id)
 
         if is_promoted and not esiste:
             await self._register_channel(chat_id, chat_title, context)
