@@ -49,10 +49,17 @@ class RegistrazioneCanale:
         with DatabaseManager() as db:
             esiste = db.channel.channel_exists(chat_id)
 
-        if is_promoted and not esiste:
+        is_admin_now = new_status in {"administrator", "creator"}
+
+        if is_promoted:
             await self._register_channel(chat_id, chat_title, context)
             return
             
+        if is_admin_now and not esiste:
+            await self._register_channel(chat_id, chat_title, context)
+            self.logger.info(f"Il bot è admin su {chat_title}, però non è stato registrato. Registro ora {chat_title}...")
+            return
+
         if is_removed:
             await self._remove_channel(chat_id, chat_title, context)
             return
