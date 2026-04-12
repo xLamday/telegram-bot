@@ -36,37 +36,43 @@ class RegistrazioneCanale:
 
         chat = cm.chat
         chat_id = str(chat.id)
-        chat_title = self._get_chat_title(chat) or "<senza nome>"
+        chat_title = await self._get_chat_title(chat) or "<senza nome>"
 
         old_status = cm.old_chat_member.status
         new_status = cm.new_chat_member.status
 
-# Determina l'azione da eseguire
-        is_promoted = self._is_promoted(old_status, new_status)
-        is_removed = self._is_removed(old_status, new_status)
+        with DatabaseManager() as db:
+            esiste = db.channel.channel_exists(chat_id)
 
-        if is_promoted:
+        # Determina l'azione da eseguire
+        is_promoted = await self._is_promoted(old_status, new_status)
+        is_removed = await self._is_removed(old_status, new_status)
+
+        if is_promoted and not esiste:
             await self._register_channel(chat_id, chat_title, context)
-        elif is_removed:
+            return
+            
+        if is_removed:
             await self._remove_channel(chat_id, chat_title, context)
-        else:
-            self.logger.debug(
-                f"Nessuna azione necessaria per {chat_title}: "
-                f"{old_status} → {new_status}"
-            )
+            return
+        
+        self.logger.debug(
+            f"Nessuna azione necessaria per {chat_title}: "
+            f"{old_status} → {new_status}"
+        )
 
-    def _get_chat_title(self, chat: ChatMemberUpdated) -> str:
+    async def _get_chat_title(self, chat: ChatMemberUpdated) -> str:
         """Restituisce il titolo della chat o un placeholder."""
         return chat.title or chat.username or f"Chat {chat.id}"
 
-    def _is_promoted(self, old_status: str, new_status: str) -> bool:
+    async def _is_promoted(self, old_status: str, new_status: str) -> bool:
         """Verifica se il bot è stato promosso ad admin."""
         admin_statuses = {"administrator", "creator"}
         
-        self._verify_admin_permissions
+
         return new_status in admin_statuses and old_status not in admin_statuses
 
-    def _is_removed(self, old_status: str, new_status: str) -> bool:
+    async def _is_removed(self, old_status: str, new_status: str) -> bool:
         """
         Verifica se il bot è stato rimosso o ha perso i permessi admin.
         
@@ -88,7 +94,6 @@ class RegistrazioneCanale:
         is_removed = new_status in removed_statuses
 
 
-        self._verify_admin_permissions
         return (was_admin and lost_admin) or (was_active and is_removed)
 
     async def _register_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE) -> bool:

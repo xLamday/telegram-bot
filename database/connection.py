@@ -15,6 +15,7 @@ def setup_database():
     cursor = conn.cursor()
 
     tables = [
+
         # Tabella dei canali
         """
         CREATE TABLE IF NOT EXISTS channels (
@@ -22,6 +23,7 @@ def setup_database():
             title TEXT
         )
         """,
+        
         # Tabella dei post pubblicati
         """
         CREATE TABLE IF NOT EXISTS posts (
