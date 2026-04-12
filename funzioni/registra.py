@@ -178,6 +178,7 @@ class RegistrazioneCanale:
                 self.logger.warning(
                     f"⚠️ Bot non risulta admin in {chat_id} durante verifica"
                 )
+                return bot_is_admin
 
             self.logger.warning(f"Bot risulta admin in {chat_id} durante verifica")
             
