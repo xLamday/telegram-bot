@@ -58,6 +58,8 @@ class RegistrazioneCanale:
         if is_admin_now and not esiste:
             await self._register_channel(chat_id, chat_title, context)
             self.logger.info(f"Il bot è admin su {chat_title}, però non è stato registrato. Registro ora {chat_title}...")
+        else:
+            self.logger.info(f"Il bot è admin su {chat_title}, ed il canale è stato già registrato. IGNORO registrazione per {chat_title}, lo stato del bot è {new_status}")
             return
 
         if is_removed:
