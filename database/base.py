@@ -13,56 +13,45 @@ class BaseDatabase:
 
     def __init__(self):
         self.conn: Optional[sqlite3.Connection] = None
-        self.cursor: Optional[sqlite3.Cursor] = None
+
     def __enter__(self):
         self.conn = get_connection()
-        self.cursor = None
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
+            if exc_type is not None:
+                self.conn.rollback()
             self.conn.close()
-        self.cursor = None
-    
-    def _execute(self, query: str, params: tuple = ()) -> bool:
-        """Execute a query and return success status."""
+        self.conn = None
+
+    def _get_cursor(self) -> sqlite3.Cursor:
+        """Return a new cursor, or None if connection is missing."""
         if not self.conn:
-            logger.error("Database connection is None in _execute")
-            return False
-        
+            raise sqlite3.Error("Database connection is None")
+        return self.conn.cursor()
+
+    def _execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+        """
+        Execute a query without committing.
+        Returns the cursor on success, None on failure.
+        Commit is responsibility of the caller.
+        """
+        cursor = self._get_cursor()
         try:
-            self.cursor = self.conn.cursor()
-            self.cursor.execute(query, params)
-            self.conn.commit()
-            return True
+            cursor.execute(query, params)
+            return cursor
         except sqlite3.Error as e:
             logger.error(f"Database error in _execute: {e}")
-            return False
-    
-    def _fetch_one(self, query: str, params: tuple = ()):
+            raise
+
+    def _fetch_one(self, query: str, params: tuple = ()) -> Optional[tuple]:
         """Fetch one row from query."""
-        if not self.conn:
-            logger.error("Database connection is None in _fetch_one")
-            return None
-        
-        try:
-            self.cursor = self.conn.cursor()
-            self.cursor.execute(query, params)
-            return self.cursor.fetchone()
-        except sqlite3.Error as e:
-            logger.error(f"Database error in _fetch_one: {e}")
-            return None
-    
-    def _fetch_all(self, query: str, params: tuple = ()):
+        cursor = self._execute(query, params)
+        return cursor.fetchone()
+
+
+    def _fetch_all(self, query: str, params: tuple = ()) -> list:
         """Fetch all rows from query."""
-        if not self.conn:
-            logger.error("Database connection is None in _fetch_all")
-            return []
-        
-        try:
-            self.cursor = self.conn.cursor()
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
-        except sqlite3.Error as e:
-            logger.error(f"Database error in _fetch_all: {e}")
-            return []
+        cursor = self._execute(query, params)
+        return cursor.fetchall()

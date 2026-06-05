@@ -4,7 +4,10 @@ Provides backwards-compatible interface while using simplified architecture.
 """
 from .channel_db import ChannelDatabase
 from .post_db import PostDatabase
+import sqlite3
+from loggerinfo import LoggerInfo
 
+logger = LoggerInfo(name="DatabaseManager").get_logger()
 
 class DatabaseManager:
     """
@@ -28,6 +31,7 @@ class DatabaseManager:
         # New consolidated databases
         self._channel_db = ChannelDatabase()
         self._post_db = PostDatabase()
+        self.logger = LoggerInfo(name="ManagerDB").get_logger()
 
     # ==================== NEW API ====================
     
@@ -65,6 +69,8 @@ class DatabaseManager:
                 else:
                     # Rollback on exception
                     self.shared_conn.rollback()
+            except sqlite3.Error as e:
+                self.logger.error(f"Database error in __exit__: {e}")
             finally:
                 self.shared_conn.close()
                 self.shared_conn = None
