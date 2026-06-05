@@ -145,11 +145,13 @@ class RegistrazioneCanale:
                 with DatabaseManager() as db:
                     deleted = db.channel.delete_channel(chat_id)
 
-                if not deleted:
+                if deleted:
                     self.logger.info(f"Canale rimosso: {chat_title} ({chat_id})")
                     await self._notify_admin_removal(chat_id, chat_title, context)
-                else:   
-                    self.logger.info(f"Canale non rimosso: {chat_title} ({chat_id}), non è stato trovato nel DB.")
+                else:
+                    self.logger.info(
+                        f"ℹ️ Canale non rimosso: {chat_title} ({chat_id})"
+                    )
 
             except Exception as e:
                 self.logger.error(
