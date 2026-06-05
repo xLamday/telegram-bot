@@ -18,7 +18,12 @@ class ChannelDatabase(BaseDatabase):
         try:
             self._execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
             self._execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
+            deleted_count = self.cursor.rowcount
+            if deleted_count == 0:
+                self.logger.info(f"Canale {chat_id} non trovato nel DB")
+                return False
             self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
+            return True
         except sqlite3.Error as e:
             self.logger.error(f"Errore eliminazione canale {chat_id}: {e}")
             return False
@@ -51,10 +56,29 @@ class ChannelDatabase(BaseDatabase):
         ) is not None
 
     # ------------------- UTILITY -------------------
-    def add_channel(self, chat_id: int, title: str):
-        if not self.channel_exists(chat_id):
-            self._execute(
-                "INSERT INTO channels (chat_id, title) VALUES (?, ?)",
-                (chat_id, title)
-            )
-            self.logger.info(f"Nuovo canale aggiunto: {chat_id} - {title}")
+    def add_channel(self, chat_id: int, title: str) -> bool:
+        """
+            Aggiunge un canale al database se non esiste già.
+            
+            Args:
+                chat_id: ID del canale
+                title: Titolo del canale
+                
+            Returns:
+                booleano con 'True' se il canale è stato aggiunto, oppure False se già esistente o errore
+        """
+        before = self._fetch_one(
+            "SELECT 1 FROM channels WHERE chat_id=?",
+            (chat_id,)
+        )
+
+        self._execute(
+            "INSERT OR IGNORE INTO channels (chat_id, title) VALUES (?, ?)",
+            (chat_id, title)
+        )
+
+        self.conn.commit()
+
+        return before is None
+
+        

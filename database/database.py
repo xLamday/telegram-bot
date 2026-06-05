@@ -238,7 +238,12 @@ class DatabaseManagerDeprecato:
             self.cursor.execute("DELETE FROM posts WHERE channel_chat_id=?", (chat_id,))
             self.cursor.execute("DELETE FROM channels WHERE chat_id=?", (chat_id,))
             self.conn.commit()
+            deleted_count = self.cursor.rowcount
+            if deleted_count == 0:
+                self.logger.info(f"Canale {chat_id} non trovato nel DB")
+                return False
             self.logger.info(f"Canale {chat_id} e post associati eliminati dal DB")
+            return True
         except sqlite3.Error as e:
             self.logger.error(f"Errore eliminazione canale {chat_id}: {e}")
             return False
