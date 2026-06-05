@@ -86,6 +86,8 @@ def main():
     app.add_handler(CommandHandler("check_rate", bot_commands.check_rate, filters.User(Settings.ADMIN_ID)))
     # /pulisci_duplicati
     app.add_handler(CommandHandler("pulisci_duplicati", bot_commands.pulisci_duplicati, filters.User(Settings.ADMIN_ID)))
+    # /check_admin
+    app.add_handler(CommandHandler("check_admin", bot_commands.check_bot_admin_permissions, filters.User(Settings.ADMIN_ID)))   
     # /check_duplicati
     app.add_handler(CommandHandler("check_duplicati", bot_commands.check_duplicati, filters.User(Settings.ADMIN_ID)))
 

@@ -36,7 +36,7 @@ class BotMonitor:
         if Settings.processo_invio or Settings.invio or Settings.controllo_canali_attivo:
             self.logger.info(
                 f"Skip check_post_eliminati: processo_invio={Settings.processo_invio}, "
-                f"invio={Settings.invio}"
+                f"invio={Settings.invio}, controllo_canali_attivo={Settings.controllo_canali_attivo}"
             )
             return
         
@@ -112,7 +112,7 @@ class BotMonitor:
         try:
             await rate_limiter.execute(
                 chat_id=chat_id,
-                coro_factory=lambda: self._forward_message_safe(context, chat_id, msg_id),
+                coro_factory=lambda cid=chat_id, mid=msg_id: self._forward_message_safe(context, cid, mid),
             )
             self.logger.debug(
                 f"✓ Messaggio {msg_id} da {title} verificato"
@@ -123,12 +123,12 @@ class BotMonitor:
             # Messaggio eliminato
             await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
             self.logger.info(
-                f"⚠️ Possibile post eliminato in {chat_id}, {title}"
+                f"⚠️ Possibile post eliminato in {chat_id}, {title}. Errore verificato: {e}"
             )
             
-        except Forbidden:
-            await self._notify_admin_forbidden_channel(context, chat_id, title)
-            await self._remove_forbidden_channel(chat_id, msg_id)
+        except Forbidden as e:
+            await self._notify_admin_forbidden_channel(context, chat_id, title, type(e).__name__)
+            await self._remove_forbidden_channel(chat_id, title)
             
         except TelegramError as e:
             self.logger.error(
@@ -147,10 +147,10 @@ class BotMonitor:
             try:
                 await rate_limiter.execute(
                     chat_id=str(Settings.CANALE_CONTROLLO),
-                    coro_factory=lambda: context.bot.copy_message(
+                    coro_factory=lambda cid=chat_id, mid=msg_id: context.bot.copy_message(
                         chat_id=Settings.CANALE_CONTROLLO,
-                        from_chat_id=int(chat_id),
-                        message_id=msg_id,
+                        from_chat_id=int(cid),
+                        message_id=mid,
                     ),
                 )
                 return
@@ -170,23 +170,35 @@ class BotMonitor:
     
     async def check_bot_admin(self, context: ContextTypes.DEFAULT_TYPE):
         """Controlla periodicamente se il bot ha ancora permessi admin nei canali."""
+        if Settings.processo_invio or Settings.invio or Settings.check_admin:
+            self.logger.info(
+                f"Skip check_admin: processo_invio={Settings.processo_invio}, "
+                f"invio={Settings.invio}, check_admin={Settings.check_admin}"
+            )
+            return
+
         if self._lock_check_admin.locked():
             self.logger.info("⏸ check_bot_admin: già in esecuzione, skip.")
             return
         
         async with self._lock_check_admin:
-            self.logger.info("🔐 Avvio controllo permessi admin...")
+            Settings.check_admin = True
+            try:
+                self.logger.info("🔐 Avvio controllo permessi admin...")
+                
+                with DatabaseManager() as db:
+                    channels = db.channel.fetch_all_channels()
             
-            with DatabaseManager() as db:
-                channels = db.channel.fetch_all_channels()
+                total_channels = len(channels)
+                self.logger.info(f"📊 Totale canali da controllare: {total_channels}")
             
-            total_channels = len(channels)
-            self.logger.info(f"📊 Totale canali da controllare: {total_channels}")
-            
-            # Processa i canali in batch
-            await self._process_channels_in_batches(context, channels)
-            
-            self.logger.info("✅ Controllo permessi admin completato.")
+                # Processa i canali in batch
+                await self._process_channels_in_batches(context, channels)
+            except Exception as e:
+                self.logger.error(f"Errore nel controllo permessi admin: {e}")
+            finally:
+                Settings.check_admin = False
+                self.logger.info("✅ Controllo permessi admin completato.")
     
     async def _process_channels_in_batches(
         self,
@@ -241,7 +253,7 @@ class BotMonitor:
         try:
             admins = await rate_limiter.execute(
                 chat_id=chat_id,
-                coro_factory=lambda: context.bot.get_chat_administrators(int(chat_id)),
+                coro_factory=lambda cid=chat_id: context.bot.get_chat_administrators(int(cid)),
             )
             admin_ids = {a.user.id for a in admins}
 
@@ -252,13 +264,15 @@ class BotMonitor:
                 self.logger.info(f"✅ [FALLBACK] Bot admin su '{title}'")
 
         except BadRequest as e:
+            error_type = type(e).__name__
             await self._notify_admin_inaccessible_channel(
-                context, chat_id, title, type(e).__name__
+                context, chat_id, title, error_type
             )
             self.logger.warning(f"⚠️ Impossibile controllare '{title}': {e}")
 
-        except Forbidden:
-            await self._notify_admin_forbidden_channel(context, chat_id, title)
+        except Forbidden as e:
+            error_type = type(e).__name__
+            await self._notify_admin_forbidden_channel(context, chat_id, title, error_type)
             await self._remove_forbidden_channel(chat_id, title)
         except TelegramError as e:
             self.logger.error(f"❌ Errore controllando '{title}': {e}")
@@ -289,16 +303,19 @@ class BotMonitor:
         self,
         context: ContextTypes.DEFAULT_TYPE,
         chat_id: str,
-        title: str
+        title: str,
+        error_type: str
     ):
         """Notifica admin di un canale non accessibile."""
         try:
             await context.bot.send_message(
                 chat_id=Settings.ADMIN_ID,
                 text=(
-                    f"⚠️ Non posso accedere al canale {chat_id}\n"
-                    f"📢 Titolo: {title}\n"
-                    f"Il canale è stato rimosso o il bot bannato!"
+                    f"⚠️ Non posso accedere al canale {chat_id}\n\n"
+                    f"📢 Titolo: {title}\n\n"
+                    f"Il canale è stato rimosso o il bot bannato!\n\n"
+                    f"Errore verificato: {error_type}\n\n"
+                    f"Azione: ho rimosso il canale dal database con relativi post (se presenti)\n\n"
                 )
             )
         except TelegramError as e:
@@ -324,14 +341,14 @@ class BotMonitor:
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
     
-    async def _remove_forbidden_channel(self, chat_id: str, msg_id: int):
+    async def _remove_forbidden_channel(self, chat_id: str, title: str):
         """Rimuove un canale non accessibile dal database."""
         try:
             with DatabaseManager() as db:
                 db.channel.delete_channel(chat_id)
-            self.logger.info(f"🗑️ Canale {chat_id} rimosso dal database")
+            self.logger.info(f"🗑️ Canale '{title}' ({chat_id}) rimosso dal database")
         except Exception as e:
-            self.logger.error(f"Errore rimozione canale {chat_id}: {e}")
+            self.logger.error(f"Errore rimozione canale '{title}' ({chat_id}): {e}")
     
     async def _handle_lost_admin_rights(
         self,

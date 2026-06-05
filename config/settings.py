@@ -16,5 +16,4 @@ class Settings:
     controllo_canali_attivo = False
     processo_invio = False
     invio = False
-    CODE_VALIDITY = 10 * 60 # TEMPO DI VALIDITA' DEL CODICE (10 * 60 = 10 MINUTI)
-    DELAY = 5
+    check_admin = False

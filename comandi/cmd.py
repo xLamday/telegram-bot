@@ -34,6 +34,7 @@ class ComandiBot:
             "➡️ /check_duplicati per controllare se ci sono post duplicati nel database.\n"
             "➡️ /check_rate per controllare le statistiche su log del RateLimiter.\n"
             "➡️ /pulisci_duplicati per rimuovere i post duplicati dal database.\n"
+            "➡️ /check_admin per controllare se il bot è admin su tutti i canali registrati.\n"
             "➡️ /check_canali per controllare se i canali privati sono registrati e se i post sono stati inoltrati correttamente."
         )
         await update.message.reply_text(text)
@@ -81,12 +82,12 @@ class ComandiBot:
 
         raw = context.args[0].strip()
 
-        success = self.system.remove_channel(raw)
+        success = await self.system.remove_channel_by_admin(raw, context)
         if success:
             # Prova a notificare il canale rimosso
             try:
                 if raw.lstrip("-").isdigit():
-                    await context.bot.send_message(chat_id=int(raw), text="❌ Questo canale è stato rimosso dal registro.")
+                    self.logger.info(f"Canale {raw} rimosso dal registro.")
             except Exception:
                 self.logger.warning(f"Impossibile inviare messaggio di rimozione al canale {raw}")
             await update.message.reply_text(f"✅ Canale e post associati rimossi: {raw}")
@@ -108,6 +109,13 @@ class ComandiBot:
         except Exception as errore:
             self.logger.info(f"Errore riscontrato: {errore}")
 
+
+    # ------------------ CHECK BOT ADMIN PERMISSIONS ------------------
+    async def check_bot_admin_permissions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            await self.botmonitor.check_bot_admin(context)
+        except Exception as errore:
+            self.logger.info(f"Errore riscontrato: {errore}")
 
     # ------------------ PUBBLICA ------------------
     async def cmd_pubblica(self, update: Update, context: ContextTypes.DEFAULT_TYPE, timeout: int = 60):

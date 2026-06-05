@@ -155,7 +155,7 @@ class ChannelManager:
                 
             finally:
                 # IMPORTANTE: Pulisci sempre lo stato, anche in caso di errore
-                Settings.proceso_invio = False
+                Settings.processo_invio = False
                 
                 if self.cmd_handler and user_id in self.cmd_handler.reset_tasks:
                     task = self.cmd_handler.reset_tasks[user_id]
@@ -302,7 +302,7 @@ class ChannelManager:
                 if old_post:
                     old_forwarded_message_id = old_post["forwarded_message_id"]
                     self.logger.debug(
-                        f"📝 Trovato vecchio messaggio inoltrato {old_forwarded_message_id} in {title}"
+                        f"📝 Trovato vecchio messaggio inoltrato {old_forwarded_message_id} in {title} dal database"
                     )
         except Exception as e:
             self.logger.warning(
@@ -325,7 +325,7 @@ class ChannelManager:
                 error_msg = str(e).lower()
                 if "message to delete not found" in error_msg or "message can't be deleted" in error_msg:
                     self.logger.info(
-                        f"ℹ️ Vecchio messaggio {old_forwarded_message_id} già eliminato o non trovato in {title}"
+                        f"ℹ️ Vecchio messaggio {old_forwarded_message_id} già eliminato o non trovato in {title}. Errore verificato: {e}"
                     )
                 else:
                     self.logger.warning(
@@ -349,8 +349,8 @@ class ChannelManager:
                 # Invia il nuovo messaggio
                 sent_message = await rate_limiter.execute(
                     chat_id=chat_id,
-                    coro_factory=lambda: context.bot.copy_message(
-                        chat_id=int(chat_id),
+                    coro_factory=lambda cid=chat_id: context.bot.copy_message(
+                        chat_id=int(cid),
                         from_chat_id=message.chat_id,
                         message_id=message.message_id,
                         reply_markup=message.reply_markup,
@@ -389,7 +389,7 @@ class ChannelManager:
                     return result
                     
             except RetryAfter as e:
-                wait_time = e.retry_after ** 2
+                wait_time = e.retry_after + 2  # usa il valore indicato da Telegram + piccolo buffer
                 
                 if attempt == self.max_retries:
                     result["error"] = f"Rate limit dopo {attempt} tentativi"
@@ -472,3 +472,13 @@ class ChannelManager:
             self.logger.error(
                 f"❌ Errore durante rimozione canale {chat_id}: {e}"
             )
+
+    async def remove_channel_by_admin(self, chat_id: str, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            with DatabaseManager() as db:
+                eliminato = db.channel.delete_channel(chat_id)
+                if eliminato:
+                    await context.bot.send_message(chat_id=int(chat_id), text="❌ Questo canale è stato rimosso dal registro.")
+        except Exception as errore:
+            self.logger.info(f"Errore riscontrato: {errore}")
+        

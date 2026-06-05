@@ -46,26 +46,25 @@ class RegistrazioneCanale:
         is_promoted = await self._is_promoted(old_status, new_status)
         is_removed = await self._is_removed(old_status, new_status)
 
-        with DatabaseManager() as db:
-            esiste = db.channel.channel_exists(chat_id)
-
         is_admin_now = new_status in {"administrator", "creator"}
+
+        # La rimozione ha priorità: va verificata PRIMA, indipendentemente dalla promozione
+        if is_removed:
+            await self._remove_channel(chat_id, chat_title, context)
+            return
 
         if is_promoted:
             await self._register_channel(chat_id, chat_title, context)
             return
-            
-        if is_admin_now and not esiste:
-            await self._register_channel(chat_id, chat_title, context)
+
+        if is_admin_now:
             self.logger.info(f"Il bot è admin su {chat_title}, però non è stato registrato. Registro ora {chat_title}...")
+            await self._register_channel(chat_id, chat_title, context)
+            return
         else:
-            self.logger.info(f"Il bot è admin su {chat_title}, ed il canale è stato già registrato. IGNORO registrazione per {chat_title}, lo stato del bot è {new_status}")
+            self.logger.info(f"Il bot non è admin su {chat_title}, ed il suo stato è {new_status}. IGNORO registrazione per {chat_title}")
             return
 
-        if is_removed:
-            await self._remove_channel(chat_id, chat_title, context)
-            return
-        
         self.logger.debug(
             f"Nessuna azione necessaria per {chat_title}: "
             f"{old_status} → {new_status}"
@@ -77,10 +76,9 @@ class RegistrazioneCanale:
 
     async def _is_promoted(self, old_status: str, new_status: str) -> bool:
         """Verifica se il bot è stato promosso ad admin."""
-        admin_statuses = {"administrator", "creator"}
+        admin = {"administrator", "creator"}
         
-
-        return new_status in admin_statuses and old_status not in admin_statuses
+        return new_status in admin and old_status not in admin
 
     async def _is_removed(self, old_status: str, new_status: str) -> bool:
         """
@@ -106,39 +104,38 @@ class RegistrazioneCanale:
 
         return (was_admin and lost_admin) or (was_active and is_removed)
 
-    async def _register_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
-        """Registra un canale nel DB se non esiste già."""
+    async def _ensure_channel(self, chat_id, chat_title, context):
+        """
+        Registra un canale se non esiste, senza fare il verify.
+        Usato quando il bot viene promosso ad admin. In quel caso non serve fare il verify.
+        """
         async with self.lock:
             try:
-                with DatabaseManager() as db:
-                    esiste = db.channel.channel_exists(chat_id)
-                    if esiste:
-                        self.logger.info(f"Canale {chat_title} ({chat_id}) già registrato.")
-                        return
+                inserted = False
 
-                    # Verifica i permessi effettivi del bot
-                    if not await self._verify_admin_permissions(chat_id, context):
-                        self.logger.warning(
-                            f"⚠️ Bot non ha permessi admin in {chat_title}, "
-                            "registrazione annullata"
-                        )
-                        return
+                with DatabaseManager() as db:
+                    inserted = db.channel.add_channel(chat_id, chat_title)
+
+                if inserted:
+                    self.logger.info(f"📥 Canale registrato: {chat_title} ({chat_id})")
 
                     await self._notify_channel_registration(chat_id, context)
-
-                    # Aggiunge il canale al DB
-                    db.channel.add_channel(chat_id, chat_title)
-
-                    # Notifica admin del successo
                     await self._notify_admin_registration(chat_id, chat_title, context)
+                else:
+                    self.logger.info(
+                        f"ℹ️ Canale già presente: {chat_title} ({chat_id})"
+                    )
 
-                    self.logger.info(f"✅ Canale registrato con successo: {chat_title} ({chat_id})")
+                return True
 
-                    return True
             except Exception as e:
-                self.logger.error(f"Errore durante la registrazione del canale {chat_title} ({chat_id}): {e}")
-                await self._notify_admin_error(f"Errore registrazione canale {chat_title} ({chat_id}): {e}", context)
-                return False    
+                self.logger.error(f"Errore ensure channel {chat_id}: {e}")
+                await self._notify_admin_error(str(e), context)
+                return False
+
+    async def _register_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Registra un canale nel DB se non esiste già."""
+        return await self._ensure_channel(chat_id, chat_title, context)
 
     async def _remove_channel(self, chat_id: str, chat_title: str, context: ContextTypes.DEFAULT_TYPE):
         """Rimuove un canale dal DB e notifica l'admin."""
@@ -146,22 +143,13 @@ class RegistrazioneCanale:
             try:
                 # Verifica se il canale esiste nel DB
                 with DatabaseManager() as db:
-                    if not db.channel.channel_exists(chat_id):
-                        self.logger.info(
-                            f"ℹ️ Canale {chat_title} ({chat_id}) non presente nel DB, skip"
-                        )
-                        return
+                    deleted = db.channel.delete_channel(chat_id)
 
-                # Rimuove il canale e i post associati
-                with DatabaseManager() as db:
-                    db.channel.delete_channel(chat_id)
-
-                # Notifica admin
-                await self._notify_admin_removal(chat_id, chat_title, context)
-
-                self.logger.info(
-                    f"🗑️ Canale rimosso: {chat_title} ({chat_id}), "
-                )
+                if not deleted:
+                    self.logger.info(f"Canale rimosso: {chat_title} ({chat_id})")
+                    await self._notify_admin_removal(chat_id, chat_title, context)
+                else:   
+                    self.logger.info(f"Canale non rimosso: {chat_title} ({chat_id}), non è stato trovato nel DB.")
 
             except Exception as e:
                 self.logger.error(
@@ -190,7 +178,7 @@ class RegistrazioneCanale:
                 )
                 return bot_is_admin
 
-            self.logger.warning(f"Bot risulta admin in {chat_id} durante verifica")
+            self.logger.info(f"Bot risulta admin in {chat_id} durante verifica")
             
             return bot_is_admin
 
