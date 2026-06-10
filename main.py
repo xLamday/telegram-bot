@@ -141,7 +141,7 @@ async def on_startup(app):
     logger.info(f"🤖 Bot avviato correttamente")
     logger.info(f"🆔 ID BOT: {bot.id}")
     logger.info(f"👤 Username: @{bot.username}")
-    logger.info(f"🆚 Versione del bot: 2.3.1")
+    logger.info(f"🆚 Versione del bot: 2.4.0")
 
 async def on_shutdown(app):
     await rate_limiter.stop()

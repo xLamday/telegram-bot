@@ -479,6 +479,10 @@ class ChannelManager:
                 eliminato = db.channel.delete_channel(chat_id)
                 if eliminato:
                     await context.bot.send_message(chat_id=int(chat_id), text="❌ Questo canale è stato rimosso dal registro.")
+                    return True
+                else:
+                    return False
         except Exception as errore:
             self.logger.info(f"Errore riscontrato: {errore}")
+            return False
         
