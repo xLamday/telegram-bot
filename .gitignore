@@ -1,10 +1,12 @@
 # Environents
 .env
+.vscode
+.venv
+
 __pycache__/
-/funzioni/__pycache__
-*.pyc
-/comandi/__pycache__
-*.pyc
-/logs
-/database/database.db
+
+logs/
+
+database/database.db
+
 config/settings.py

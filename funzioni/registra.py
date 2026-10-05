@@ -11,9 +11,10 @@ from funzioni.system import ChannelManager
 class RegistrazioneCanale:
     """Classe per gestire la registrazione e rimozione dei canali privati."""
 
-    def __init__(self):
+    def __init__(self, notification_wrapper=None):
+        self.notification_wrapper = notification_wrapper
         self.lock = asyncio.Lock()
-        self.system = ChannelManager()
+        self.system = ChannelManager(notification_wrapper=notification_wrapper)
         self.logger = LoggerInfo(name="RegistrazioneCanale").get_logger()
         self.logger.info(f"🧩 Nuova istanza RegistrazioneCanale creata: {id(self)}")
 
@@ -145,13 +146,11 @@ class RegistrazioneCanale:
                 with DatabaseManager() as db:
                     deleted = db.channel.delete_channel(chat_id)
 
-                if deleted:
+                if not deleted:
                     self.logger.info(f"Canale rimosso: {chat_title} ({chat_id})")
                     await self._notify_admin_removal(chat_id, chat_title, context)
-                else:
-                    self.logger.info(
-                        f"ℹ️ Canale non rimosso: {chat_title} ({chat_id})"
-                    )
+                else:   
+                    self.logger.info(f"Canale non rimosso: {chat_title} ({chat_id}), non è stato trovato nel DB.")
 
             except Exception as e:
                 self.logger.error(
@@ -229,11 +228,14 @@ class RegistrazioneCanale:
                 "Il canale è ora monitorato dal sistema."
             )
             
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=message,
-                parse_mode="HTML"
-            )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(message)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=message,
+                    parse_mode="HTML"
+                )
         except TelegramError as e:
             self.logger.error(f"❌ Errore notifica admin: {e}")
 
@@ -247,22 +249,29 @@ class RegistrazioneCanale:
                 "<i>Motivo: Bot rimosso o permessi revocati</i>\n\n"
             )
             
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=message,
-                parse_mode="HTML"
-            )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(message)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=message,
+                    parse_mode="HTML"
+                )
         except TelegramError as e:
             self.logger.error(f"❌ Errore notifica admin rimozione: {e}")
 
     async def _notify_admin_error(self, error_message: str, context: ContextTypes.DEFAULT_TYPE):
         """Notifica l'admin di un errore durante le operazioni."""
         try:
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=f"❌ <b>Errore sistema registrazione</b>\n\n{error_message}",
-                parse_mode="HTML"
-            )
+            msg = f"❌ <b>Errore sistema registrazione</b>\n\n{error_message}"
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(msg)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=msg,
+                    parse_mode="HTML"
+                )
         except TelegramError as e:
             self.logger.error(
                 f"❌ Impossibile notificare admin dell'errore: {e}"

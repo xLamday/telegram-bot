@@ -26,6 +26,7 @@ from funzioni.registra import RegistrazioneCanale
 from funzioni.system import ChannelManager
 from funzioni.scheduledfunzioni import BotMonitor
 from utils import rate_limiter
+from utils.notification_wrapper import NotificationWrapper
 
 logger = LoggerInfo(name="main").get_logger()
 
@@ -56,11 +57,12 @@ def main():
         return
 
     # Crea le istanze delle classi che gestiscono la logica
-    RegistrazioneCanali = RegistrazioneCanale()
-    bot_monitor = BotMonitor()
+    notification_wrapper = NotificationWrapper()
+    RegistrazioneCanali = RegistrazioneCanale(notification_wrapper)
+    bot_monitor = BotMonitor(notification_wrapper)
     bot_commands = ComandiBot(bot_monitor=bot_monitor)
 
-    channel_manager = ChannelManager()
+    channel_manager = ChannelManager(notification_wrapper=notification_wrapper)
     channel_manager.set_cmd_handler(bot_commands)
 
     # Crea l'applicazione
@@ -116,6 +118,7 @@ def main():
         job_queue.run_repeating(bot_monitor.check_bot_admin, interval=3600)
         job_queue.run_repeating(bot_monitor.check_post_eliminati, interval=60)
         job_queue.run_repeating(rate_limiter.log_stats, interval=1200)
+        job_queue.run_repeating(notification_wrapper.flush, interval=Settings.NOTIFICATION_BATCH_TIME)
         logger.info("Job periodici avviati con successo.")
     except Exception as e:
         logger.warning(f"Errore nell’avvio dei job periodici: {e}")
@@ -141,7 +144,7 @@ async def on_startup(app):
     logger.info(f"🤖 Bot avviato correttamente")
     logger.info(f"🆔 ID BOT: {bot.id}")
     logger.info(f"👤 Username: @{bot.username}")
-    logger.info(f"🆚 Versione del bot: 2.4.0")
+    logger.info(f"🆚 Versione del bot: 2.3.1")
 
 async def on_shutdown(app):
     await rate_limiter.stop()

@@ -15,9 +15,10 @@ from utils import rate_limiter
 class BotMonitor:
     """Classe per il monitoraggio dei post e dei permessi admin."""
     
-    def __init__(self):
+    def __init__(self, notification_wrapper=None):
+        self.notification_wrapper = notification_wrapper
         self.state_lock = asyncio.Lock()
-        self.system = ChannelManager()
+        self.system = ChannelManager(notification_wrapper=notification_wrapper)
         self._lock_check_post = asyncio.Lock()
         self._lock_check_admin = asyncio.Lock()
         self.logger = LoggerInfo(name="BotMonitor").get_logger()
@@ -287,15 +288,19 @@ class BotMonitor:
     ):
         """Notifica admin di un post eliminato."""
         try:
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=(
-                    f"⚠️ Il messaggio pubblicato nel canale {chat_id}\n"
-                    f"📢 Titolo: {title}\n"
-                    f"🆔 Message ID: {msg_id}\n"
-                    f"È possibile che sia stato eliminato!"
-                )
+            msg = (
+                f"⚠️ Il messaggio pubblicato nel canale {chat_id}\n"
+                f"📢 Titolo: {title}\n"
+                f"🆔 Message ID: {msg_id}\n"
+                f"È possibile che sia stato eliminato!"
             )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(msg)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=msg
+                )
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
     
@@ -308,16 +313,20 @@ class BotMonitor:
     ):
         """Notifica admin di un canale non accessibile."""
         try:
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=(
-                    f"⚠️ Non posso accedere al canale {chat_id}\n\n"
-                    f"📢 Titolo: {title}\n\n"
-                    f"Il canale è stato rimosso o il bot bannato!\n\n"
-                    f"Errore verificato: {error_type}\n\n"
-                    f"Azione: ho rimosso il canale dal database con relativi post (se presenti)\n\n"
-                )
+            msg = (
+                f"⚠️ Non posso accedere al canale {chat_id}\n\n"
+                f"📢 Titolo: {title}\n\n"
+                f"Il canale è stato rimosso o il bot bannato!\n\n"
+                f"Errore verificato: {error_type}\n\n"
+                f"Azione: ho rimosso il canale dal database con relativi post (se presenti)\n\n"
             )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(msg)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=msg
+                )
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
     
@@ -330,14 +339,18 @@ class BotMonitor:
     ):
         """Notifica admin di un canale inaccessibile."""
         try:
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=(
-                    f"⚠️ Non posso accedere al canale {chat_id}\n"
-                    f"📢 Titolo: {title}\n"
-                    f"❌ Errore: {error_type}"
-                )
+            msg = (
+                f"⚠️ Non posso accedere al canale {chat_id}\n"
+                f"📢 Titolo: {title}\n"
+                f"❌ Errore: {error_type}"
             )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(msg)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=msg
+                )
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
     
@@ -366,11 +379,14 @@ class BotMonitor:
                 f"🆔 Canale: {chat_id}\n"
                 f"📢 Titolo: {title}"
             )
-            await context.bot.send_message(
-                chat_id=Settings.ADMIN_ID,
-                text=messaggio,
-                parse_mode="HTML"
-            )
+            if self.notification_wrapper:
+                await self.notification_wrapper.add_notification(messaggio)
+            else:
+                await context.bot.send_message(
+                    chat_id=Settings.ADMIN_ID,
+                    text=messaggio,
+                    parse_mode="HTML"
+                )
         except TelegramError as e:
             self.logger.error(f"Errore notifica perdita admin: {e}")
         

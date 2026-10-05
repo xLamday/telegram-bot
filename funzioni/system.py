@@ -14,12 +14,14 @@ from database.manager import DatabaseManager
 class ChannelManager:
     """Classe per gestire l'invio e il monitoraggio dei messaggi nei canali."""
     
-    def __init__(self, cmd_handler=None):
+    def __init__(self, cmd_handler=None, notification_wrapper=None):
         """
         Args:
             cmd_handler: Istanza di ComandiBot (passata dopo l'inizializzazione)
+            notification_wrapper: Istanza di NotificationWrapper
         """
         self.cmd_handler = cmd_handler
+        self.notification_wrapper = notification_wrapper
         self.logger = LoggerInfo(name="ChannelManager").get_logger()
         self.logger.info(f"🧩 Nuova istanza ChannelManager creata: {id(self)}")
         
@@ -455,16 +457,20 @@ class ChannelManager:
             
             # Notifica admin
             try:
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=(
-                        f"⚠️ <b>Canale rimosso automaticamente</b>\n\n"
-                        f"📺 <b>Titolo:</b> {title}\n"
-                        f"🆔 <b>ID:</b> <code>{chat_id}</code>\n\n"
-                        f"<i>Motivo: Bot rimosso o canale eliminato</i>"
-                    ),
-                    parse_mode="HTML"
+                msg = (
+                    f"⚠️ <b>Canale rimosso automaticamente</b>\n\n"
+                    f"📺 <b>Titolo:</b> {title}\n"
+                    f"🆔 <b>ID:</b> <code>{chat_id}</code>\n\n"
+                    f"<i>Motivo: Bot rimosso o canale eliminato</i>"
                 )
+                if self.notification_wrapper:
+                    await self.notification_wrapper.add_notification(msg)
+                else:
+                    await context.bot.send_message(
+                        chat_id=Settings.ADMIN_ID,
+                        text=msg,
+                        parse_mode="HTML"
+                    )
             except TelegramError as e:
                 self.logger.error(f"❌ [{TEC.classifica(e)}] Errore notifica admin rimozione: {e}")
                 
@@ -479,10 +485,6 @@ class ChannelManager:
                 eliminato = db.channel.delete_channel(chat_id)
                 if eliminato:
                     await context.bot.send_message(chat_id=int(chat_id), text="❌ Questo canale è stato rimosso dal registro.")
-                    return True
-                else:
-                    return False
         except Exception as errore:
             self.logger.info(f"Errore riscontrato: {errore}")
-            return False
         
