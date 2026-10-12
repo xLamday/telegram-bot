@@ -133,12 +133,17 @@ class BotMonitor:
         categoria = TEC.classifica(error)
 
         if TEC.è_messaggio_non_trovato(error):
-            self.logger.info(f"⚠️ [{categoria}] Post eliminato in {chat_id} ({title}): {error}")
+            self.logger.info(f"⚠️ [{categoria}] Post non trovato in {chat_id} ({title}): {error}")
+            await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
+            return
+        
+        if TEC.è_messaggio_delete_error(error):
+            self.logger.info(f"⚠️ [{categoria}] Il post in {chat_id} ({title}) non può essere eliminato: {error}")
             await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
             return
 
         if TEC.è_chat_restricted(error):
-            # CHAT_RESTRICTED: può dipendere dal canale sorgente o da quello di controllo.
+            # CHAT_RESTRICTED: dipende solo dal canale sorgente
             esiste = await self.system.verifica_chat_esiste(chat_id, context)
             if esiste is False:
                 await self._notify_admin_forbidden_channel(context, chat_id, title, type(error).__name__)

@@ -30,10 +30,13 @@ class TelegramErrorClassificatore:
 
     # Errori che indicano che il messaggio specifico non esiste più
     MESSAGE_NOT_FOUND = frozenset({
-        "message to delete not found",
         "message to copy not found",
         "message to forward not found",
-        "message not found",
+        "message not found"
+    })
+
+    MESSAGE_DELETE_ERROR = frozenset({
+        "message to delete not found",
         "message can't be deleted",
         "message can't be deleted for everyone",
     })
@@ -60,7 +63,7 @@ class TelegramErrorClassificatore:
         """Controlla i seguenti casi in cui la chat non è raggiungibile:
         - è inesistente
         - bot bannato
-        - canale eliminato 
+        - canale non trovato
         
         Operazione eseguita: → rimozione dal DB."""
         if isinstance(error, Forbidden):
@@ -76,6 +79,13 @@ class TelegramErrorClassificatore:
         - Operazione eseguita: → post eliminato."""
         if isinstance(error, BadRequest):
             return cls._matches(error, cls.MESSAGE_NOT_FOUND)
+        return False
+
+    @classmethod
+    def è_messaggio_delete_error(cls, error: TelegramError) -> bool:
+        """Controlla se c'è un errore di delete del messaggio"""
+        if isinstance(error, BadRequest):
+            return cls._matches(error, cls.MESSAGE_DELETE_ERROR)
         return False
 
     @classmethod
@@ -99,6 +109,7 @@ class TelegramErrorClassificatore:
             cls.è_chat_irraggiungibile(error),
             cls.è_messaggio_non_trovato(error),
             cls.è_chat_restricted(error),
+            cls.è_messaggio_delete_error(error),
             cls.è_transitorio(error),
             isinstance(error, RetryAfter),
         ])
@@ -117,6 +128,8 @@ class TelegramErrorClassificatore:
             return "message_not_found"
         if cls.è_chat_restricted(error):
             return "chat_restricted"
+        if cls.è_messaggio_delete_error(error):
+            return "message_delete_error"
         if cls.è_transitorio(error):
             return "transitorio"
         if isinstance(error, RetryAfter):
