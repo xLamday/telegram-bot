@@ -54,19 +54,23 @@ class RateLimiter:
         Controlla se è possibile inviare senza attendere.
         Returns True se si può procedere subito, False se si è a limite.
         """
+        chat_id = str(chat_id)
         async with self._lock:
-            now = time.monotonic()
-            wait = self._calcola_wait(chat_id, now)
-            return wait == 0.0
+            return self._calcola_wait(chat_id, time.monotonic()) == 0.0
 
     async def attendi_se_necessario(self, chat_id: str) -> None:
         """
         Attende il tempo necessario prima di poter inviare.
         Blocca finché non è sicuro procedere.
         """
+        chat_id = str(chat_id)
         async with self._lock:
-            now = time.monotonic()
-            wait = self._calcola_wait(chat_id, now)
+            adesso = time.monotonic()
+            wait = self._calcola_wait(chat_id, adesso)
+            slot = adesso + wait
+            self._last_send[chat_id] = slot
+            self._global_sends.append(slot)
+            self._sends_per_minute[chat_id].append(slot)
 
         if wait > 0:
             self._stats["attesa_preventiva"] += 1
@@ -90,20 +94,22 @@ class RateLimiter:
                 coro_factory=lambda: bot.send_message(chat_id=chat_id, text="ciao")
             )
         """
+        chat_id = str(chat_id)
         self._stats["total_calls"] += 1
 
         for tentativi in range(1, max_retries + 1):
             await self.attendi_se_necessario(chat_id)
 
             try:
-                result = await coro_factory()
-                await self._register_send(chat_id)
-                return result
+                return await coro_factory()
 
             except RetryAfter as e:
                 self._stats["retry_after_hits"] += 1
-                tempo_attesa = e.retry_after + 2
+                retry_after = e.retry_after
+                if hasattr(retry_after, "total_seconds"):
+                    retry_after = retry_after.total_seconds()
 
+                tempo_attesa = retry_after + 2                
                 if tentativi == max_retries:
                     self.logger.error(
                         f"❌ RetryAfter esaurito dopo {tentativi} tentativi "
@@ -144,14 +150,6 @@ class RateLimiter:
             wait = max(wait, 60.0 - (now - self._sends_per_minute[chat_id][0]))
 
         return wait
-
-    async def _register_send(self, chat_id: str):
-        """Registra un invio riuscito."""
-        async with self._lock:
-            ora = time.monotonic()
-            self._last_send[chat_id] = ora
-            self._global_sends.append(ora)
-            self._sends_per_minute[chat_id].append(ora)
 
     async def _cleanup_loop(self):
         """Rimuove periodicamente i dati delle chat inattive."""

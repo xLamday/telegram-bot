@@ -1,6 +1,7 @@
 # funzioni/system.py
 import asyncio
-from typing import List, Tuple
+import html
+from typing import List, Optional, Tuple
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError, RetryAfter, Forbidden, BadRequest
@@ -407,8 +408,28 @@ class ChannelManager:
                 await asyncio.sleep(wait_time) ## Convertito in esponenziale
                 
             except (BadRequest, Forbidden) as e:
-                # Check se la chat è raggiungibile attraverso utils
-                if TEC.è_chat_irraggiungibile(e):
+                if TEC.è_chat_restricted(e):
+                    # CHAT_RESTRICTED: prima di agire verifica che il canale esista ancora
+                    esiste = await self.verifica_chat_esiste(chat_id, context)
+                    if esiste is False:
+                        result["error"] = "Canale non più esistente"
+                        result["channel_removed"] = True
+                        self.logger.warning(f"🚫 [chat_restricted] '{title}' ({chat_id}) non esiste più: {e}")
+                        await self._remove_channel_after_error(chat_id, title, context)
+                    else:
+                        result["error"] = "Chat con restrizioni: il bot non può pubblicare"
+                        self.logger.warning(
+                            f"⚠️ [chat_restricted] '{title}' ({chat_id}): il canale esiste "
+                            f"(verifica={esiste}), lo mantengo nel DB. Dettaglio: {e}"
+                        )
+                        if self.notification_wrapper:
+                            await self.notification_wrapper.add_notification(
+                                f"⚠️ <b>Canale con restrizioni</b>\n"
+                                f"📺 {html.escape(str(title))} (<code>{chat_id}</code>)\n"
+                                f"Il bot non può pubblicare, ma il canale esiste ancora.",
+                                key=f"restricted:{chat_id}",
+                            )
+                elif TEC.è_chat_irraggiungibile(e):
                     result["error"] = "Canale non trovato o bot rimosso"
                     result["channel_removed"] = True
                     self.logger.warning(f"⚠️ Accesso negato a {title} ({chat_id}): {e}")
@@ -447,6 +468,28 @@ class ChannelManager:
         
         return result
     
+    async def verifica_chat_esiste(self, chat_id, context: ContextTypes.DEFAULT_TYPE) -> Optional[bool]:
+        """
+        Verifica con get_chat se la chat esiste ancora.
+
+        Returns:
+            True  → la chat esiste (get_chat riuscita)
+            False → la chat è irraggiungibile/inesistente (da rimuovere)
+            None  → esito incerto (errore transitorio o non classificabile): non agire
+        """
+        try:
+            await rate_limiter.execute(
+                chat_id=chat_id,
+                coro_factory=lambda: context.bot.get_chat(int(chat_id)),
+            )
+            return True
+        except TelegramError as e:
+            if TEC.è_chat_irraggiungibile(e):
+                self.logger.info(f"🔎 get_chat({chat_id}): chat non più raggiungibile ({e})")
+                return False
+            self.logger.warning(f"🔎 get_chat({chat_id}) inconcludente [{TEC.classifica(e)}]: {e}")
+            return None
+
     async def _remove_channel_after_error(self,chat_id: str,title: str,context: ContextTypes.DEFAULT_TYPE):
         """Rimuove un canale dal database dopo un errore di accesso."""
         try:
@@ -459,12 +502,12 @@ class ChannelManager:
             try:
                 msg = (
                     f"⚠️ <b>Canale rimosso automaticamente</b>\n\n"
-                    f"📺 <b>Titolo:</b> {title}\n"
+                    f"📺 <b>Titolo:</b> {html.escape(str(title))}\n"
                     f"🆔 <b>ID:</b> <code>{chat_id}</code>\n\n"
                     f"<i>Motivo: Bot rimosso o canale eliminato</i>"
                 )
                 if self.notification_wrapper:
-                    await self.notification_wrapper.add_notification(msg)
+                    await self.notification_wrapper.add_notification(msg, key=f"removed:{chat_id}")
                 else:
                     await context.bot.send_message(
                         chat_id=Settings.ADMIN_ID,
@@ -479,12 +522,23 @@ class ChannelManager:
                 f"❌ Errore durante rimozione canale {chat_id}: {e}"
             )
 
-    async def remove_channel_by_admin(self, chat_id: str, context: ContextTypes.DEFAULT_TYPE):
+    async def remove_channel_by_admin(self, chat_id: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Rimuove il canale dal DB. Restituisce True se è stato eliminato."""
         try:
             with DatabaseManager() as db:
                 eliminato = db.channel.delete_channel(chat_id)
-                if eliminato:
-                    await context.bot.send_message(chat_id=int(chat_id), text="❌ Questo canale è stato rimosso dal registro.")
         except Exception as errore:
-            self.logger.info(f"Errore riscontrato: {errore}")
+            self.logger.error(f"Errore rimozione canale {chat_id}: {errore}")
+            return False
+
+        if eliminato:
+            # Notifica fuori dal `with`: non tenere il lock del DB durante la rete
+            try:
+                await context.bot.send_message(
+                    chat_id=int(chat_id),
+                    text="❌ Questo canale è stato rimosso dal registro.",
+                )
+            except (TelegramError, ValueError) as e:
+                self.logger.warning(f"Impossibile notificare la rimozione al canale {chat_id}: {e}")
+        return eliminato
         

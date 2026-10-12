@@ -10,3 +10,4 @@ logs/
 database/database.db
 
 config/settings.py
+simulate_errors.*

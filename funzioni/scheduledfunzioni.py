@@ -1,7 +1,6 @@
 # bot_monitor.py
-from ast import Set
 import asyncio
-import re
+import html
 from typing import List, Tuple
 from telegram.error import TelegramError, BadRequest, Forbidden, RetryAfter
 from telegram.ext import ContextTypes
@@ -10,6 +9,7 @@ from funzioni.system import ChannelManager
 from config.settings import Settings
 from database.manager import DatabaseManager
 from utils import rate_limiter
+from utils.telegram_errors import TelegramErrorClassificatore as TEC
 
 
 class BotMonitor:
@@ -109,33 +109,86 @@ class BotMonitor:
         msg_id: int,
         title: str
     ):
-        """Controlla un singolo post."""
+        """Controlla un singolo post copiandolo nel canale di controllo."""
+        try:
+            # Il rate limiting avviene dentro _forward_message_safe (sul canale che riceve la copia)
+            await self._forward_message_safe(context, chat_id, msg_id)
+            self.logger.debug(f"✓ Messaggio {msg_id} da {title} verificato")
+        except TelegramError as e:
+            await self._handle_check_error(context, chat_id, title, msg_id, e)
+
+    async def _handle_check_error(
+        self,
+        context: ContextTypes.DEFAULT_TYPE,
+        chat_id: str,
+        title: str,
+        msg_id: int,
+        error: TelegramError,
+    ):
+        """
+        Classifica l'errore di copy_message. L'errore può venire sia dal canale sorgente
+        sia dal canale di controllo, quindi prima di rimuovere un canale si verifica
+        che sia davvero lui quello irraggiungibile.
+        """
+        categoria = TEC.classifica(error)
+
+        if TEC.è_messaggio_non_trovato(error):
+            self.logger.info(f"⚠️ [{categoria}] Post eliminato in {chat_id} ({title}): {error}")
+            await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
+            return
+
+        if TEC.è_chat_restricted(error):
+            # CHAT_RESTRICTED: può dipendere dal canale sorgente o da quello di controllo.
+            esiste = await self.system.verifica_chat_esiste(chat_id, context)
+            if esiste is False:
+                await self._notify_admin_forbidden_channel(context, chat_id, title, type(error).__name__)
+                await self._remove_forbidden_channel(chat_id, title)
+            else:
+                self.logger.warning(
+                    f"⚠️ [{categoria}] '{title}' ({chat_id}): il canale esiste (verifica={esiste}), "
+                    f"non lo rimuovo. Dettaglio: {error}"
+                )
+                await self._notify(
+                    context,
+                    f"⚠️ <b>Canale con restrizioni</b>\n"
+                    f"📺 {html.escape(str(title))} (<code>{chat_id}</code>)\n"
+                    f"Il canale esiste ancora ma il bot non riesce a controllarlo (CHAT_RESTRICTED).",
+                    key=f"restricted:{chat_id}",
+                )
+            return
+
+        if TEC.è_chat_irraggiungibile(error):
+            if await self._source_unreachable(context, chat_id):
+                await self._notify_admin_forbidden_channel(context, chat_id, title, type(error).__name__)
+                await self._remove_forbidden_channel(chat_id, title)
+            else:
+                # Il canale sorgente risponde: il problema è (probabilmente) il canale di controllo
+                self.logger.error(
+                    f"❌ [{categoria}] Errore su '{title}' ({chat_id}) ma il canale è raggiungibile: "
+                    f"controlla l'accesso del bot a CANALE_CONTROLLO. Dettaglio: {error}"
+                )
+                await self._notify(
+                    context,
+                    f"❌ <b>Controllo post non riuscito</b>\n"
+                    f"Verifica che il bot sia admin nel canale di controllo.\n"
+                    f"<code>{html.escape(str(error))}</code>",
+                    key="control-channel-error",
+                )
+            return
+
+        self.logger.error(f"❌ [{categoria}] Errore Telegram controllando {chat_id}: {error}")
+
+    async def _source_unreachable(self, context: ContextTypes.DEFAULT_TYPE, chat_id: str) -> bool:
+        """True solo se get_chat conferma che il canale sorgente non è raggiungibile."""
         try:
             await rate_limiter.execute(
                 chat_id=chat_id,
-                coro_factory=lambda cid=chat_id, mid=msg_id: self._forward_message_safe(context, cid, mid),
+                coro_factory=lambda: context.bot.get_chat(int(chat_id)),
             )
-            self.logger.debug(
-                f"✓ Messaggio {msg_id} da {title} verificato"
-            )
-            
-            
-        except BadRequest as e:
-            # Messaggio eliminato
-            await self._notify_admin_deleted_post(context, chat_id, title, msg_id)
-            self.logger.info(
-                f"⚠️ Possibile post eliminato in {chat_id}, {title}. Errore verificato: {e}"
-            )
-            
-        except Forbidden as e:
-            await self._notify_admin_forbidden_channel(context, chat_id, title, type(e).__name__)
-            await self._remove_forbidden_channel(chat_id, title)
-            
+            return False
         except TelegramError as e:
-            self.logger.error(
-                f"❌ Errore Telegram controllando {chat_id}: {e}"
-            )
-    
+            return TEC.è_chat_irraggiungibile(e)
+
     async def _forward_message_safe(
         self,
         context: ContextTypes.DEFAULT_TYPE,
@@ -156,8 +209,8 @@ class BotMonitor:
                 )
                 return
  
-            except (BadRequest, Forbidden):
-                # Non ha senso ritentare per questi errori
+            except (BadRequest, Forbidden, RetryAfter):
+                # Non ha senso ritentare (RetryAfter è già gestito da rate_limiter.execute)
                 raise
                 
             except TelegramError as e:
@@ -279,81 +332,52 @@ class BotMonitor:
             self.logger.error(f"❌ Errore controllando '{title}': {e}")
     
     # Metodi helper per notifiche
-    async def _notify_admin_deleted_post(
-        self,
-        context: ContextTypes.DEFAULT_TYPE,
-        chat_id: str,
-        title: str,
-        msg_id: int
-    ):
-        """Notifica admin di un post eliminato."""
+    async def _notify(self, context: ContextTypes.DEFAULT_TYPE, msg: str, key: str = None):
+        """Accoda la notifica (con deduplica per `key`) oppure la invia subito se non c'è il wrapper."""
+        if self.notification_wrapper:
+            await self.notification_wrapper.add_notification(msg, key=key)
+        else:
+            await context.bot.send_message(chat_id=Settings.ADMIN_ID, text=msg, parse_mode="HTML")
+
+    async def _notify_admin_deleted_post(self, context, chat_id, title, msg_id):
+        """Notifica admin di un post eliminato (una volta ogni cooldown per post)."""
         try:
             msg = (
                 f"⚠️ Il messaggio pubblicato nel canale {chat_id}\n"
-                f"📢 Titolo: {title}\n"
+                f"📢 Titolo: {html.escape(str(title))}\n"
                 f"🆔 Message ID: {msg_id}\n"
                 f"È possibile che sia stato eliminato!"
             )
-            if self.notification_wrapper:
-                await self.notification_wrapper.add_notification(msg)
-            else:
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=msg
-                )
+            await self._notify(context, msg, key=f"deleted:{chat_id}:{msg_id}")
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
-    
-    async def _notify_admin_forbidden_channel(
-        self,
-        context: ContextTypes.DEFAULT_TYPE,
-        chat_id: str,
-        title: str,
-        error_type: str
-    ):
+
+    async def _notify_admin_forbidden_channel(self, context, chat_id, title, error_type):
         """Notifica admin di un canale non accessibile."""
         try:
             msg = (
                 f"⚠️ Non posso accedere al canale {chat_id}\n\n"
-                f"📢 Titolo: {title}\n\n"
+                f"📢 Titolo: {html.escape(str(title))}\n\n"
                 f"Il canale è stato rimosso o il bot bannato!\n\n"
-                f"Errore verificato: {error_type}\n\n"
+                f"Errore verificato: {html.escape(error_type)}\n\n"
                 f"Azione: ho rimosso il canale dal database con relativi post (se presenti)\n\n"
             )
-            if self.notification_wrapper:
-                await self.notification_wrapper.add_notification(msg)
-            else:
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=msg
-                )
+            await self._notify(context, msg, key=f"forbidden:{chat_id}")
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
-    
-    async def _notify_admin_inaccessible_channel(
-        self,
-        context: ContextTypes.DEFAULT_TYPE,
-        chat_id: str,
-        title: str,
-        error_type: str
-    ):
+
+    async def _notify_admin_inaccessible_channel(self, context, chat_id, title, error_type):
         """Notifica admin di un canale inaccessibile."""
         try:
             msg = (
                 f"⚠️ Non posso accedere al canale {chat_id}\n"
-                f"📢 Titolo: {title}\n"
-                f"❌ Errore: {error_type}"
+                f"📢 Titolo: {html.escape(str(title))}\n"
+                f"❌ Errore: {html.escape(error_type)}"
             )
-            if self.notification_wrapper:
-                await self.notification_wrapper.add_notification(msg)
-            else:
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=msg
-                )
+            await self._notify(context, msg, key=f"inaccessible:{chat_id}")
         except TelegramError as e:
             self.logger.error(f"Errore notifica admin: {e}")
-    
+
     async def _remove_forbidden_channel(self, chat_id: str, title: str):
         """Rimuove un canale non accessibile dal database."""
         try:
@@ -377,17 +401,10 @@ class BotMonitor:
             messaggio = (
                 "⚠️ Ho perso i permessi admin!\n"
                 f"🆔 Canale: {chat_id}\n"
-                f"📢 Titolo: {title}"
+                f"📢 Titolo: {html.escape(str(title))}"
             )
-            if self.notification_wrapper:
-                await self.notification_wrapper.add_notification(messaggio)
-            else:
-                await context.bot.send_message(
-                    chat_id=Settings.ADMIN_ID,
-                    text=messaggio,
-                    parse_mode="HTML"
-                )
+            await self._notify(context, messaggio, key=f"lost-admin:{chat_id}")
         except TelegramError as e:
             self.logger.error(f"Errore notifica perdita admin: {e}")
-        
+
         self.logger.info(f"⚠️ Permessi admin persi in {title}")

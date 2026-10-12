@@ -25,8 +25,6 @@ class ComandiBot:
         """Messaggio di benvenuto con istruzioni."""
         text = (
             "👋 Ciao!\n\n"
-            "➡️ /registra genererà un codice da inviare all'admin del canale che si vuole registrare.\n"
-            "L'admin dovrà inserire quel codice per completare la registrazione.\n"
             "➡️ Per canali privati: basta inserire il bot come admin nel canale dove si vuole registrare, "
             "il bot rileverà automaticamente.\n"
             "➡️ /rimuovi <link o ID> per rimuovere un canale.\n"
@@ -77,19 +75,14 @@ class ComandiBot:
     async def rimuovi(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Rimuove un canale dal database."""
         if not context.args:
-            await update.message.reply_text("Devi fornire il titolo o l'ID del canale da rimuovere.")
+            await update.message.reply_text("Devi fornire l'ID del canale da rimuovere.")
             return
 
         raw = context.args[0].strip()
 
         success = await self.system.remove_channel_by_admin(raw, context)
         if success:
-            # Prova a notificare il canale rimosso
-            try:
-                if raw.lstrip("-").isdigit():
-                    self.logger.info(f"Canale {raw} rimosso dal registro.")
-            except Exception:
-                self.logger.warning(f"Impossibile inviare messaggio di rimozione al canale {raw}")
+            self.logger.info(f"Canale {raw} rimosso dal registro.")
             await update.message.reply_text(f"✅ Canale e post associati rimossi: {raw}")
         else:
             await update.message.reply_text("⚠️ Questo canale non è presente nel database.")

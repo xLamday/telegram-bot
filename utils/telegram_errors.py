@@ -1,3 +1,4 @@
+from telegram.error import NetworkError
 from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
 
 class TelegramErrorClassificatore:
@@ -21,6 +22,10 @@ class TelegramErrorClassificatore:
         "bot is not a member of the supergroup",
         "bot is not a member of the group",
         "have no rights to send a message",
+    })
+
+    CHAT_RESTRICTED = frozenset({
+        "chat_restricted",
     })
 
     # Errori che indicano che il messaggio specifico non esiste più
@@ -74,11 +79,18 @@ class TelegramErrorClassificatore:
         return False
 
     @classmethod
+    def è_chat_restricted(cls, error: TelegramError) -> bool:
+        """Controlla se c'è un errore di restrizione del chat (temporaneo, ma non transitorio)"""
+        if isinstance(error, BadRequest):
+            return cls._matches(error, cls.CHAT_RESTRICTED)
+        return False
+
+    @classmethod
     def è_transitorio(cls, error: TelegramError) -> bool:
         """Controlla se c'è un errore transitorio (temporaneo) lato Telegram"""
-        if isinstance(error, BadRequest):
+        if isinstance(error, (BadRequest, Forbidden)):
             return cls._matches(error, cls.TRANSIENT)
-        return False
+        return isinstance(error, NetworkError) or cls._matches(error, cls.TRANSIENT)
 
     @classmethod
     def è_errore_generico(cls, error: TelegramError) -> bool:
@@ -86,6 +98,7 @@ class TelegramErrorClassificatore:
         return not any([
             cls.è_chat_irraggiungibile(error),
             cls.è_messaggio_non_trovato(error),
+            cls.è_chat_restricted(error),
             cls.è_transitorio(error),
             isinstance(error, RetryAfter),
         ])
@@ -102,6 +115,8 @@ class TelegramErrorClassificatore:
             return "chat_unreachable:notfound"
         if cls.è_messaggio_non_trovato(error):
             return "message_not_found"
+        if cls.è_chat_restricted(error):
+            return "chat_restricted"
         if cls.è_transitorio(error):
             return "transitorio"
         if isinstance(error, RetryAfter):

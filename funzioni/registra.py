@@ -1,5 +1,6 @@
 # channel_registrar.py
 import asyncio
+import html
 from telegram import ChatMemberUpdated
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError, BadRequest, Forbidden
@@ -36,6 +37,8 @@ class RegistrazioneCanale:
             return
 
         chat = cm.chat
+        if chat.type != "channel":
+            return  # ignora chat private e gruppi
         chat_id = str(chat.id)
         chat_title = await self._get_chat_title(chat) or "<senza nome>"
 
@@ -65,11 +68,6 @@ class RegistrazioneCanale:
         else:
             self.logger.info(f"Il bot non è admin su {chat_title}, ed il suo stato è {new_status}. IGNORO registrazione per {chat_title}")
             return
-
-        self.logger.debug(
-            f"Nessuna azione necessaria per {chat_title}: "
-            f"{old_status} → {new_status}"
-        )
 
     async def _get_chat_title(self, chat: ChatMemberUpdated) -> str:
         """Restituisce il titolo della chat o un placeholder."""
@@ -146,10 +144,10 @@ class RegistrazioneCanale:
                 with DatabaseManager() as db:
                     deleted = db.channel.delete_channel(chat_id)
 
-                if not deleted:
+                if deleted:
                     self.logger.info(f"Canale rimosso: {chat_title} ({chat_id})")
                     await self._notify_admin_removal(chat_id, chat_title, context)
-                else:   
+                else:
                     self.logger.info(f"Canale non rimosso: {chat_title} ({chat_id}), non è stato trovato nel DB.")
 
             except Exception as e:
@@ -223,7 +221,7 @@ class RegistrazioneCanale:
         try:
             message = (
                 "📢 <b>Nuovo canale registrato!</b>\n\n"
-                f"📺 <b>Titolo:</b> {chat_title}\n"
+                f"📺 <b>Titolo:</b> {html.escape(str(chat_title))}\n"
                 f"🆔 <b>ID:</b> <code>{chat_id}</code>\n\n"
                 "Il canale è ora monitorato dal sistema."
             )
@@ -244,7 +242,7 @@ class RegistrazioneCanale:
         try:
             message = (
                 "⚠️ <b>Canale rimosso dal sistema</b>\n\n"
-                f"📺 <b>Titolo:</b> {chat_title}\n"
+                f"📺 <b>Titolo:</b> {html.escape(str(chat_title))}\n"
                 f"🆔 <b>ID:</b> <code>{chat_id}</code>\n\n"
                 "<i>Motivo: Bot rimosso o permessi revocati</i>\n\n"
             )
@@ -263,7 +261,7 @@ class RegistrazioneCanale:
     async def _notify_admin_error(self, error_message: str, context: ContextTypes.DEFAULT_TYPE):
         """Notifica l'admin di un errore durante le operazioni."""
         try:
-            msg = f"❌ <b>Errore sistema registrazione</b>\n\n{error_message}"
+            msg = f"❌ <b>Errore sistema registrazione</b>\n\n{html.escape(str(error_message))}"
             if self.notification_wrapper:
                 await self.notification_wrapper.add_notification(msg)
             else:
